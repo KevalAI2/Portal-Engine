@@ -1,0 +1,1 @@
+DS = "/smart_recommender"
