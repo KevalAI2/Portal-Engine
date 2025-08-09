@@ -1,15 +1,15 @@
 from fastapi import HTTPException, status, Depends
 from sqlalchemy.orm import Session
-from schema.user import User
-from schema.auth import TokenData
+from app.schema.user import User
+from app.schema.auth import TokenData
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer  # Import OAuth2PasswordBearer
 from .user import get_user
-from core.database import get_db  # Import your DB session
-from const.route import DS
-from const.auth import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.core.database import get_db  # Import your DB session
+from app.const.route import DS
+from app.const.auth import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Define oauth2_scheme globally
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{DS}/auth/login/")

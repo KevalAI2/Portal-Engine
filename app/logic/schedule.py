@@ -6,8 +6,8 @@ from sqlalchemy.sql.expression import and_, func
 from croniter import croniter
 from fastapi import HTTPException
 
-from model.schedule import TaskRunRecord, TaskRunStatus, TaskSchedule
-from const.celery_config import TASK_NAME_CONSTANTS
+from app.model.schedule import TaskRunRecord, TaskRunStatus, TaskSchedule
+from app.const.celery_config import TASK_NAME_CONSTANTS
 
 
 def get_all_task_schedules(db: Session, offset=0, limit=100):
@@ -197,30 +197,55 @@ def create_task_run_record_for_celery_task(db: Session, task):
     return create_task_run_record(db, job_name).id
 
 
+# NEW: fetch run records by schedule id
+
+def get_task_run_records_by_schedule_id(
+    db: Session, schedule_id: int, limit: int = 50, offset: int = 0
+):
+    schedule = get_task_schedule_by_id(db, schedule_id)
+    if not schedule:
+        return []
+    return (
+        db.query(TaskRunRecord)
+        .filter(TaskRunRecord.name == schedule.name)
+        .order_by(TaskRunRecord.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
 def with_task_logging():
     def base_job_decorator(job_func):
         from celery.utils.log import get_task_logger
+        # Import here to avoid circular imports at module load time
+        from app.core.database import SessionLocal
 
         logger = get_task_logger(__name__)
 
         @wraps(job_func)
         def wrapper(self, *args, **kwargs):
+            db = SessionLocal()
             record_id = None
             try:
-                # Note: This would need to be updated to pass the session
-                # record_id = create_task_run_record_for_celery_task(self)
+                record_id = create_task_run_record_for_celery_task(db, self)
                 result = job_func(self, *args, **kwargs)
-                # update_task_run_record(id=record_id, status=TaskRunStatus.SUCCESS)
-
+                update_task_run_record(
+                    db, id=record_id, status=TaskRunStatus.SUCCESS
+                )
                 return result
             except Exception as e:
                 logger.info(e)
                 if record_id is not None:
-                    # update_task_run_record(
-                    #     id=record_id, error_message=str(e), status=TaskRunStatus.FAILURE
-                    # )
-                    pass
+                    update_task_run_record(
+                        db,
+                        id=record_id,
+                        error_message=str(e),
+                        status=TaskRunStatus.FAILURE,
+                    )
                 raise e
+            finally:
+                db.close()
 
         return wrapper
 

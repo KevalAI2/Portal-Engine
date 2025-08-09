@@ -1,5 +1,5 @@
-from core.app import app
-from const.route import DS
+from app.core.app import app
+from app.const.route import DS
 from . import auth
 from . import user
 from . import scheduler

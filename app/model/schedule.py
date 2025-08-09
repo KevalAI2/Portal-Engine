@@ -5,7 +5,7 @@ from sqlalchemy.orm import backref, relationship, sessionmaker
 from datetime import datetime
 from enum import Enum
 
-from core.database import Base
+from app.core.database import Base
 
 
 # Define missing constants

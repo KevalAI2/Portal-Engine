@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from core.database import get_db
-from logic import schedule as logic
+from app.core.database import get_db
+from app.logic import schedule as logic
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ def get_event_logs():
 
 @router.get("/task")
 def get_all_tasks(db: Session = Depends(get_db)):
-    """Returns all the event logs from the db"""
+    """Returns all active scheduled tasks"""
     return logic.get_all_active_task_schedules(db)
 
 
@@ -34,14 +34,14 @@ def update_task(id: str, task: str, name: str, cron: str, db: Session = Depends(
 
 @router.delete("/task/{id}")
 def delete_task(id: str, db: Session = Depends(get_db)):
-    """Update a scheduled task"""
+    """Delete a scheduled task"""
     return logic.delete_task_schedule(db=db, id=id)
 
 
 @router.get("/task/{task_id}/history")
 def get_task_history(task_id: int, db: Session = Depends(get_db)):
-    """Schedule a report generation task"""
-    return logic.get_task_run_record(db=db, id=task_id)
+    """Return run history for a scheduled task (by schedule id)"""
+    return logic.get_task_run_records_by_schedule_id(db=db, schedule_id=task_id)
 
 
 @router.get("/celery-task")

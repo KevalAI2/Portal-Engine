@@ -1,2 +1,2 @@
-from core import app
-from route import *
+from app.core import app
+from app.route import *

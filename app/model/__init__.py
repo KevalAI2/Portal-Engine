@@ -1,4 +1,4 @@
-from core.database import Base, engine
+from app.core.database import Base, engine
 from . import user
 from . import schedule
 

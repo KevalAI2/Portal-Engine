@@ -2,7 +2,7 @@ import os
 
 from celery import Celery
 
-from const.celery_config import TASK_NAME_CONSTANTS, CELERY_BROKER_URL, CELERY_BACKEND_URL
+from app.const.celery_config import CELERY_BROKER_URL, CELERY_BACKEND_URL
 celery_app = None
 
 if not bool(os.getenv("DOCKER")):  # if running example without docker

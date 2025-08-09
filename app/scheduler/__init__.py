@@ -7,14 +7,15 @@ from celery import current_app, schedules
 from celery.beat import ScheduleEntry, Scheduler
 from celery.utils.log import get_logger
 from kombu.utils.encoding import safe_str
+from app.core.database import SessionLocal
 
-from logic.schedule import (
+from app.logic.schedule import (
     create_task_schedule,
     get_all_active_task_schedules,
     get_task_schedule_by_name,
     update_task_schedule,
 )
-from model.schedule import TaskSchedule, TaskSchedules
+from app.model.schedule import TaskSchedule, TaskSchedules
 
 ALL_JOBS = {}
 ADD_ENTRY_ERROR = """\
@@ -67,7 +68,11 @@ class ModelEntry(ScheduleEntry):
         self.last_run_at = model.last_run_at
 
     def _disable(self, model):
-        update_task_schedule(model.id, enabled=False, no_changes=True)
+        db = SessionLocal()
+        try:
+            update_task_schedule(db, model.id, enabled=False, no_changes=True)
+        finally:
+            db.close()
 
     def is_due(self):
         if not self.model.enabled:
@@ -94,16 +99,24 @@ class ModelEntry(ScheduleEntry):
 
     def save(self):
         update_dict = {field: getattr(self.model, field) for field in self.save_fields}
-        update_task_schedule(self.model.id, **update_dict)
+        db = SessionLocal()
+        try:
+            update_task_schedule(db, self.model.id, **update_dict)
+        finally:
+            db.close()
 
     @classmethod
     def from_entry(cls, name, app=None, **entry):
-        task_schedule = get_task_schedule_by_name(name)
-        if not task_schedule:
-            task_schedule = create_task_schedule(
-                name=name, **cls._unpack_fields(**entry)
-            )
-        return cls(model=task_schedule, app=app)
+        db = SessionLocal()
+        try:
+            task_schedule = get_task_schedule_by_name(db, name)
+            if not task_schedule:
+                task_schedule = create_task_schedule(
+                    db=db, name=name, **cls._unpack_fields(**entry)
+                )
+            return cls(model=task_schedule, app=app)
+        finally:
+            db.close()
 
     @classmethod
     def _unpack_fields(
@@ -165,25 +178,33 @@ class DatabaseScheduler(Scheduler):
     def all_as_schedule(self):
         logger.debug("DatabaseScheduler: Fetching database schedule")
         s = {}
-        for model in get_all_active_task_schedules():
-            with contextlib.suppress(ValueError):
-                entry = self.Entry(model, self.app)
-                s[entry.name] = entry
-        return s
+        db = SessionLocal()
+        try:
+            for model in get_all_active_task_schedules(db=db):
+                with contextlib.suppress(ValueError):
+                    entry = self.Entry(model, self.app)
+                    s[entry.name] = entry
+            return s
+        finally:
+            db.close()
 
     def schedule_changed(self):
-        last, ts = self._last_timestamp, self.Changes.last_change()
+        db = SessionLocal()
         try:
-            if ts and ts > (last or ts):
-                logger.info(
-                    "DatabaseScheduler: Schedules are changed. Old: %s, New: %s",
-                    last,
-                    ts,
-                )
-                return True
+            last = self._last_timestamp
+            ts = self.Changes.last_change(db)
+            try:
+                if ts and ts > (last or ts):
+                    logger.info(
+                        "DatabaseScheduler: Schedules are changed. Old: %s, New: %s",
+                        last, ts,
+                    )
+                    return True
+            finally:
+                self._last_timestamp = ts
+            return False
         finally:
-            self._last_timestamp = ts
-        return False
+            db.close()
 
     def reserve(self, entry):
         new_entry = Scheduler.reserve(self, entry)
@@ -254,13 +275,6 @@ class DatabaseScheduler(Scheduler):
             # the schedule changed, invalidate the heap in Scheduler.tick
             if not initial:
                 self._heap = []
-                self._heap_invalidated = True
-            logger.debug(
-                "Current schedule:\n%s",
-                "\n".join(repr(entry) for entry in self._schedule.values()),
-            )
-        return self._schedule
-
                 self._heap_invalidated = True
             logger.debug(
                 "Current schedule:\n%s",
