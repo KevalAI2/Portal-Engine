@@ -1,6 +1,7 @@
 # models.py
 
 from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
@@ -11,3 +12,8 @@ class UserInDB(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
+    
+    # Relationships
+    profile = relationship("UserProfile", back_populates="user", uselist=False)
+    recommendations = relationship("ContentRecommendation", back_populates="user")
+    interactions = relationship("ContentInteraction", back_populates="user")

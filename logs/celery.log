@@ -1,0 +1,47 @@
+ 
+ -------------- celery@jenish-Inspiron-15-3520 v5.3.4 (emerald-rush)
+--- ***** ----- 
+-- ******* ---- Linux-6.8.0-71-generic-x86_64-with-glibc2.39 2025-08-11 20:56:40
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         worker:0x7cedf76f56d0
+- ** ---------- .> transport:   amqp://guest:**@localhost:5672//
+- ** ---------- .> results:     redis://localhost:6379/0
+- *** --- * --- .> concurrency: 12 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . app.tasks.recommendation_tasks.cleanup_expired_recommendations
+  . app.tasks.recommendation_tasks.generate_recommendations
+  . app.tasks.recommendation_tasks.refresh_user_recommendations
+
+[2025-08-11 20:56:41,508: WARNING/MainProcess] /home/jenish/Desktop/StuckAI/stuckAIforTravel/venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py:507: CPendingDeprecationWarning: The broker_connection_retry configuration setting will no longer determine
+whether broker connection retries are made during startup in Celery 6.0 and above.
+If you wish to retain the existing behavior for retrying connections on startup,
+you should set broker_connection_retry_on_startup to True.
+  warnings.warn(
+
+[2025-08-11 20:56:41,515: INFO/MainProcess] Connected to amqp://guest:**@127.0.0.1:5672//
+[2025-08-11 20:56:41,515: WARNING/MainProcess] /home/jenish/Desktop/StuckAI/stuckAIforTravel/venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py:507: CPendingDeprecationWarning: The broker_connection_retry configuration setting will no longer determine
+whether broker connection retries are made during startup in Celery 6.0 and above.
+If you wish to retain the existing behavior for retrying connections on startup,
+you should set broker_connection_retry_on_startup to True.
+  warnings.warn(
+
+[2025-08-11 20:56:41,518: INFO/MainProcess] mingle: searching for neighbors
+[2025-08-11 20:56:42,537: INFO/MainProcess] mingle: all alone
+[2025-08-11 20:56:42,548: WARNING/MainProcess] /home/jenish/Desktop/StuckAI/stuckAIforTravel/venv/lib/python3.12/site-packages/kombu/pidbox.py:72: UserWarning: A node named celery@jenish-Inspiron-15-3520 is already using this process mailbox!
+
+Maybe you forgot to shutdown the other node or did not do so properly?
+Or if you meant to start multiple nodes on the same host please make sure
+you give each node a unique node name!
+
+  warnings.warn(W_PIDBOX_IN_USE.format(node=self))
+
+[2025-08-11 20:56:42,551: INFO/MainProcess] celery@jenish-Inspiron-15-3520 ready.
+
+worker: Warm shutdown (MainProcess)

@@ -41,4 +41,9 @@ def get_db():
 
 # Function to create all tables (for initial setup)
 def create_tables():
+    # Import all models to ensure they are registered with SQLAlchemy
+    from app.model.user import UserInDB
+    from app.model.schedule import TaskSchedule, TaskSchedules, TaskRunRecord
+    from app.model.content import UserProfile, ContentRecommendation, ContentInteraction
+    
     Base.metadata.create_all(bind=engine)

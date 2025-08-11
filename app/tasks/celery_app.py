@@ -19,3 +19,6 @@ else:  # running example with docker
     #     "app.tasks.celery_worker.test_celery": "test-queue"}
 
 celery_app.conf.update(task_track_started=True)
+
+# Import tasks to register them
+from app.tasks import recommendation_tasks
