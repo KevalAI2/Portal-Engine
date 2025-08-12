@@ -1,5 +1,14 @@
-from app.core.database import Base, engine
-from . import user
-from . import schedule
+from app.model.user import UserInDB
+from app.model.content import ContentRecommendation, ContentInteraction
+from app.model.schedule import TaskSchedule, TaskSchedules
+from app.model.user_profile import UserProfile, UserProfileHistory
 
-Base.metadata.create_all(bind=engine)
+__all__ = [
+    "UserInDB",
+    "ContentRecommendation",
+    "ContentInteraction",
+    "TaskSchedule",
+    "TaskSchedules",
+    "UserProfile",
+    "UserProfileHistory"
+]

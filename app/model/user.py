@@ -13,7 +13,7 @@ class UserInDB(Base):
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
     
-    # Relationships
+    # Relationships - using string references to avoid circular imports
     profile = relationship("UserProfile", back_populates="user", uselist=False)
     recommendations = relationship("ContentRecommendation", back_populates="user")
     interactions = relationship("ContentInteraction", back_populates="user")
