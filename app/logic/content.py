@@ -3,7 +3,7 @@ import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app.model.content import UserProfile, ContentRecommendation, ContentInteraction
+from app.model.content import ContentRecommendation, ContentInteraction
 from app.schema.content import (
     ContentType, InteractionType, UserProfileCreate, UserProfileUpdate,
     ContentRecommendationCreate, ContentInteractionCreate,
@@ -20,11 +20,13 @@ class ContentRecommendationService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_user_profile(self, user_id: int) -> Optional[UserProfile]:
+    def get_user_profile(self, user_id: int) -> Optional[Any]:
         """Get user profile by user ID"""
-        return self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        # This method is now handled by the user_profile module
+        from app.logic.user_profile import get_user_profile
+        return get_user_profile(self.db, user_id)
 
-    def create_or_update_user_profile(self, user_id: int, profile_data: UserProfileCreate) -> UserProfile:
+    def create_or_update_user_profile(self, user_id: int, profile_data: UserProfileCreate) -> Any:
         """Create or update user profile"""
         profile = self.get_user_profile(user_id)
         
@@ -34,8 +36,9 @@ class ContentRecommendationService:
                 setattr(profile, key, value)
             profile.updated_at = datetime.utcnow()
         else:
-            # Create new profile
-            profile = UserProfile(user_id=user_id, **profile_data.dict())
+            # Create new profile using the user_profile module
+            from app.logic.user_profile import create_user_profile
+            profile = create_user_profile(self.db, user_id, profile_data)
             self.db.add(profile)
         
         self.db.commit()
@@ -185,7 +188,7 @@ class MockRecommendationGenerator:
     """Mock recommendation generator for demo purposes"""
     
     @staticmethod
-    def generate_music_recommendations(user_profile: UserProfile) -> List[Dict[str, Any]]:
+    def generate_music_recommendations(user_profile: Any) -> List[Dict[str, Any]]:
         """Generate mock music recommendations"""
         recommendations = [
             {
@@ -210,7 +213,7 @@ class MockRecommendationGenerator:
         return recommendations
 
     @staticmethod
-    def generate_movie_recommendations(user_profile: UserProfile) -> List[Dict[str, Any]]:
+    def generate_movie_recommendations(user_profile: Any) -> List[Dict[str, Any]]:
         """Generate mock movie recommendations"""
         recommendations = [
             {
@@ -235,7 +238,7 @@ class MockRecommendationGenerator:
         return recommendations
 
     @staticmethod
-    def generate_event_recommendations(user_profile: UserProfile) -> List[Dict[str, Any]]:
+    def generate_event_recommendations(user_profile: Any) -> List[Dict[str, Any]]:
         """Generate mock event recommendations"""
         recommendations = [
             {
@@ -260,7 +263,7 @@ class MockRecommendationGenerator:
         return recommendations
 
     @staticmethod
-    def generate_place_recommendations(user_profile: UserProfile) -> List[Dict[str, Any]]:
+    def generate_place_recommendations(user_profile: Any) -> List[Dict[str, Any]]:
         """Generate mock place recommendations"""
         recommendations = [
             {

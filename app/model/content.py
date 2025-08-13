@@ -5,34 +5,7 @@ from app.core.database import Base
 from datetime import datetime
 
 
-class UserProfile(Base):
-    __tablename__ = "user_profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    
-    # Location
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
-    location_name = Column(String(255), nullable=True)
-    
-    # Preferences
-    interests = Column(JSON, default=[])  # ["music", "movies", "events", "places"]
-    keywords = Column(JSON, default=[])   # ["date night", "wellness", "adventure"]
-    archetypes = Column(JSON, default=[]) # ["wellness", "foodie", "adventurer"]
-    
-    # Demographics
-    age_group = Column(String(50), nullable=True)  # "20s", "30s", "40s"
-    relationship_status = Column(String(50), nullable=True)  # "single", "partnered"
-    
-    # Travel history
-    travel_history = Column(JSON, default=[])
-    
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("UserInDB", back_populates="profile")
+# UserProfile class moved to app/model/user_profile.py to avoid conflicts
 
 
 class ContentRecommendation(Base):

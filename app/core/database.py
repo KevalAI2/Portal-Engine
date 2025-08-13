@@ -44,6 +44,8 @@ def create_tables():
     # Import all models to ensure they are registered with SQLAlchemy
     from app.model.user import UserInDB
     from app.model.schedule import TaskSchedule, TaskSchedules, TaskRunRecord
-    from app.model.content import UserProfile, ContentRecommendation, ContentInteraction
+    from app.model.content import ContentRecommendation, ContentInteraction
+    from app.model.lis import LISPrompt, LISInteraction, LISAnalytics, LISLocationData, LISUserPreference
+    from app.model.user_profile import UserProfile, UserProfileHistory
     
     Base.metadata.create_all(bind=engine)

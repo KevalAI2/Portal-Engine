@@ -1,72 +1,79 @@
 from sqlalchemy.orm import Session
-from app.model.user_profile import UserProfile, UserProfileHistory
+from app.model.user_profile import UserProfile as UserProfileModel, UserProfileHistory
 from app.schema.user_profile import UserProfileCreate, UserProfileUpdate, ProfileValue
 from typing import List, Dict, Any, Optional
 import json
 from datetime import datetime
 
 
-def get_user_profile(db: Session, user_id: int) -> Optional[UserProfile]:
+def get_user_profile(db: Session, user_id: int) -> Optional[UserProfileModel]:
     """Get user profile by user ID"""
-    return db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    return db.query(UserProfileModel).filter(UserProfileModel.user_id == user_id).first()
 
 
-def create_user_profile(db: Session, user_id: int, profile_data: UserProfileCreate) -> UserProfile:
+def create_user_profile(db: Session, user_id: int, profile_data: UserProfileCreate) -> UserProfileModel:
     """Create a new user profile"""
-    db_profile = UserProfile(
+    
+    # Convert ProfileValue objects to dictionaries for JSON storage
+    def convert_profile_values(values):
+        if values is None:
+            return []
+        return [value.dict() if hasattr(value, 'dict') else value for value in values]
+    
+    db_profile = UserProfileModel(
         user_id=user_id,
-        keywords=profile_data.keywords,
-        archetypes=profile_data.archetypes,
+        keywords=convert_profile_values(profile_data.keywords),
+        archetypes=convert_profile_values(profile_data.archetypes),
         demographics=profile_data.demographics,
         home_location=profile_data.home_location,
-        trips_taken=profile_data.trips_taken,
+        trips_taken=convert_profile_values(profile_data.trips_taken),
         living_situation=profile_data.living_situation,
         profession=profile_data.profession,
         education=profile_data.education,
-        key_relationships=profile_data.key_relationships,
-        children=profile_data.children,
-        relationship_goals=profile_data.relationship_goals,
-        cultural_language_preferences=profile_data.cultural_language_preferences,
-        aesthetic_preferences=profile_data.aesthetic_preferences,
-        dining_preferences_cuisine=profile_data.dining_preferences_cuisine,
-        dining_preferences_other=profile_data.dining_preferences_other,
-        indoor_activity_preferences=profile_data.indoor_activity_preferences,
-        outdoor_activity_preferences=profile_data.outdoor_activity_preferences,
-        at_home_activity_preferences=profile_data.at_home_activity_preferences,
-        favorite_neighborhoods=profile_data.favorite_neighborhoods,
-        tv_movie_genres=profile_data.tv_movie_genres,
-        music_genres=profile_data.music_genres,
-        podcast_genres=profile_data.podcast_genres,
-        favorite_creators=profile_data.favorite_creators,
-        accommodation_preferences=profile_data.accommodation_preferences,
-        travel_style=profile_data.travel_style,
-        vehicle_ownership=profile_data.vehicle_ownership,
+        key_relationships=convert_profile_values(profile_data.key_relationships),
+        children=convert_profile_values(profile_data.children),
+        relationship_goals=convert_profile_values(profile_data.relationship_goals),
+        cultural_language_preferences=convert_profile_values(profile_data.cultural_language_preferences),
+        aesthetic_preferences=convert_profile_values(profile_data.aesthetic_preferences),
+        dining_preferences_cuisine=convert_profile_values(profile_data.dining_preferences_cuisine),
+        dining_preferences_other=convert_profile_values(profile_data.dining_preferences_other),
+        indoor_activity_preferences=convert_profile_values(profile_data.indoor_activity_preferences),
+        outdoor_activity_preferences=convert_profile_values(profile_data.outdoor_activity_preferences),
+        at_home_activity_preferences=convert_profile_values(profile_data.at_home_activity_preferences),
+        favorite_neighborhoods=convert_profile_values(profile_data.favorite_neighborhoods),
+        tv_movie_genres=convert_profile_values(profile_data.tv_movie_genres),
+        music_genres=convert_profile_values(profile_data.music_genres),
+        podcast_genres=convert_profile_values(profile_data.podcast_genres),
+        favorite_creators=convert_profile_values(profile_data.favorite_creators),
+        accommodation_preferences=convert_profile_values(profile_data.accommodation_preferences),
+        travel_style=convert_profile_values(profile_data.travel_style),
+        vehicle_ownership=convert_profile_values(profile_data.vehicle_ownership),
         fitness_level=profile_data.fitness_level,
-        medical_conditions=profile_data.medical_conditions,
-        health_goals=profile_data.health_goals,
-        career_goals=profile_data.career_goals,
-        financial_goals=profile_data.financial_goals,
-        social_goals=profile_data.social_goals,
-        learning_goals=profile_data.learning_goals,
-        travel_goals=profile_data.travel_goals,
-        recent_searches=profile_data.recent_searches,
-        recent_content_likes=profile_data.recent_content_likes,
-        recent_plan_discussions=profile_data.recent_plan_discussions,
-        recently_visited_venues=profile_data.recently_visited_venues,
-        recent_media_consumption=profile_data.recent_media_consumption,
+        medical_conditions=convert_profile_values(profile_data.medical_conditions),
+        health_goals=convert_profile_values(profile_data.health_goals),
+        career_goals=convert_profile_values(profile_data.career_goals),
+        financial_goals=convert_profile_values(profile_data.financial_goals),
+        social_goals=convert_profile_values(profile_data.social_goals),
+        learning_goals=convert_profile_values(profile_data.learning_goals),
+        travel_goals=convert_profile_values(profile_data.travel_goals),
+        recent_searches=convert_profile_values(profile_data.recent_searches),
+        recent_content_likes=convert_profile_values(profile_data.recent_content_likes),
+        recent_plan_discussions=convert_profile_values(profile_data.recent_plan_discussions),
+        recently_visited_venues=convert_profile_values(profile_data.recently_visited_venues),
+        recent_media_consumption=convert_profile_values(profile_data.recent_media_consumption),
         user_mood=profile_data.user_mood,
         user_energy=profile_data.user_energy,
         user_stress=profile_data.user_stress,
-        typical_outing_times=profile_data.typical_outing_times,
+        typical_outing_times=convert_profile_values(profile_data.typical_outing_times),
         wake_sleep_time=profile_data.wake_sleep_time,
         meal_times=profile_data.meal_times,
         exercise_time=profile_data.exercise_time,
-        weekly_routines=profile_data.weekly_routines,
-        productivity_windows=profile_data.productivity_windows,
-        commute_patterns=profile_data.commute_patterns,
+        weekly_routines=convert_profile_values(profile_data.weekly_routines),
+        productivity_windows=convert_profile_values(profile_data.productivity_windows),
+        commute_patterns=convert_profile_values(profile_data.commute_patterns),
         preferred_budget=profile_data.preferred_budget,
-        preferred_vibe=profile_data.preferred_vibe,
-        content_discovery_sources=profile_data.content_discovery_sources,
+        preferred_vibe=convert_profile_values(profile_data.preferred_vibe),
+        content_discovery_sources=convert_profile_values(profile_data.content_discovery_sources),
         typical_group_size=profile_data.typical_group_size,
         current_location=profile_data.current_location,
         time_of_day=profile_data.time_of_day,
@@ -81,7 +88,7 @@ def create_user_profile(db: Session, user_id: int, profile_data: UserProfileCrea
     return db_profile
 
 
-def update_user_profile(db: Session, user_id: int, profile_update: UserProfileUpdate) -> Optional[UserProfile]:
+def update_user_profile(db: Session, user_id: int, profile_update: UserProfileUpdate) -> Optional[UserProfileModel]:
     """Update user profile with partial data"""
     db_profile = get_user_profile(db, user_id)
     if not db_profile:
