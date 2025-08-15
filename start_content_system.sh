@@ -6,18 +6,50 @@
 echo "🚀 Starting Content Recommendation System..."
 echo "=============================================="
 
-# Function to check if a service is running
+# Function to check if a service is running and handle existing process
 check_service() {
     local service_name=$1
     local port=$2
+    local pid_file="pids/${service_name}.pid"
     
-    if sudo lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-        echo "✅ $service_name is already running on port $port"
-        return 0
-    else
-        echo "❌ $service_name is not running on port $port"
-        return 1
+    # Check if PID file exists
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        if ps -p $pid > /dev/null 2>&1; then
+            echo "⚠️  $service_name is already running with PID $pid"
+            read -p "Do you want to stop it and start a new instance? (y/n) " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "🛑 Stopping existing $service_name..."
+                kill $pid
+                rm "$pid_file"
+                sleep 2
+            else
+                echo "Exiting..."
+                exit 1
+            fi
+        else
+            echo "🧹 Cleaning up stale PID file..."
+            rm "$pid_file"
+        fi
     fi
+    
+    if sudo lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        local running_pid=$(sudo lsof -Pi :$port -sTCP:LISTEN -t)
+        echo "⚠️  Port $port is in use by PID $running_pid"
+        read -p "Do you want to stop it and start a new instance? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "🛑 Stopping process on port $port..."
+            kill $running_pid
+            sleep 2
+        else
+            echo "Exiting..."
+            exit 1
+        fi
+    fi
+    
+    return 0
 }
 
 # Function to start a service in background
@@ -28,6 +60,9 @@ start_service() {
     
     echo "Starting $service_name..."
     $command > logs/${service_name}.log 2>&1 &
+    local pid=$!
+    echo $pid > pids/${service_name}.pid
+    echo "✅ Started $service_name (PID: $pid)"
     local pid=$!
     echo $pid > pids/${service_name}.pid
     echo "✅ $service_name started with PID $pid"
