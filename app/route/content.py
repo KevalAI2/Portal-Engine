@@ -5,7 +5,9 @@ from app.core.database import get_db
 from app.logic.content import ContentRecommendationService
 from app.schema.content import (
     GetContentRequest, GetContentResponse, LogInteractionRequest, LogInteractionResponse,
-    UserProfileCreate, UserProfileUpdate, UserProfile, ContentType, RecommendationRequest
+    UserProfileCreate, UserProfileUpdate, UserProfile, ContentType, RecommendationRequest,
+    GetMusicRequest, GetMusicResponse, GetMovieRequest, GetMovieResponse,
+    GetEventRequest, GetEventResponse, GetPlaceRequest, GetPlaceResponse
 )
 from app.logic.auth import get_current_user
 from app.model.user import UserInDB
@@ -13,19 +15,240 @@ from app.model.user import UserInDB
 router = APIRouter()
 
 
+@router.get("/music", response_model=GetMusicResponse)
+async def get_music_recommendations(
+    limit: int = Query(10, ge=1, le=50, description="Number of music recommendations to return"),
+    offset: int = Query(0, ge=0, description="Number of recommendations to skip"),
+    genre: Optional[str] = Query(None, description="Filter by music genre"),
+    mood: Optional[str] = Query(None, description="Filter by mood (upbeat, chill, energetic)"),
+    decade: Optional[str] = Query(None, description="Filter by decade (e.g., '2020s', '90s')"),
+    current_user: UserInDB = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get personalized music recommendations for the authenticated user.
+    
+    This endpoint returns music recommendations based on the user's profile, preferences, and interaction history.
+    Supports filtering by genre, mood, and decade.
+    """
+    try:
+        service = ContentRecommendationService(db)
+        
+        # Create recommendation request for music only
+        context = {}
+        if genre:
+            context["genre"] = genre
+        if mood:
+            context["mood"] = mood
+        if decade:
+            context["decade"] = decade
+            
+        request = RecommendationRequest(
+            user_id=current_user.id,
+            content_types=[ContentType.MUSIC],
+            context=context
+        )
+        
+        # Get recommendations
+        response = service.get_recommendations(request)
+        
+        # Apply pagination
+        total_count = len(response.recommendations)
+        paginated_recommendations = response.recommendations[offset:offset + limit]
+        has_more = offset + limit < total_count
+        
+        return GetMusicResponse(
+            music_recommendations=paginated_recommendations,
+            total_count=total_count,
+            has_more=has_more
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving music recommendations: {str(e)}")
+
+
+@router.get("/movies", response_model=GetMovieResponse)
+async def get_movie_recommendations(
+    limit: int = Query(10, ge=1, le=50, description="Number of movie recommendations to return"),
+    offset: int = Query(0, ge=0, description="Number of recommendations to skip"),
+    genre: Optional[str] = Query(None, description="Filter by movie genre"),
+    rating: Optional[str] = Query(None, description="Filter by rating (G, PG, PG-13, R)"),
+    release_year: Optional[int] = Query(None, description="Filter by release year"),
+    duration: Optional[str] = Query(None, description="Filter by duration (short, medium, long)"),
+    current_user: UserInDB = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get personalized movie recommendations for the authenticated user.
+    
+    This endpoint returns movie recommendations based on the user's profile, preferences, and interaction history.
+    Supports filtering by genre, rating, release year, and duration.
+    """
+    try:
+        service = ContentRecommendationService(db)
+        
+        # Create recommendation request for movies only
+        context = {}
+        if genre:
+            context["genre"] = genre
+        if rating:
+            context["rating"] = rating
+        if release_year:
+            context["release_year"] = release_year
+        if duration:
+            context["duration"] = duration
+            
+        request = RecommendationRequest(
+            user_id=current_user.id,
+            content_types=[ContentType.MOVIE],
+            context=context
+        )
+        
+        # Get recommendations
+        response = service.get_recommendations(request)
+        
+        # Apply pagination
+        total_count = len(response.recommendations)
+        paginated_recommendations = response.recommendations[offset:offset + limit]
+        has_more = offset + limit < total_count
+        
+        return GetMovieResponse(
+            movie_recommendations=paginated_recommendations,
+            total_count=total_count,
+            has_more=has_more
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving movie recommendations: {str(e)}")
+
+
+@router.get("/events", response_model=GetEventResponse)
+async def get_event_recommendations(
+    limit: int = Query(10, ge=1, le=50, description="Number of event recommendations to return"),
+    offset: int = Query(0, ge=0, description="Number of recommendations to skip"),
+    event_type: Optional[str] = Query(None, description="Filter by event type (concert, festival, sports, theater)"),
+    date_range: Optional[str] = Query(None, description="Filter by date range (today, this_week, this_month)"),
+    price_range: Optional[str] = Query(None, description="Filter by price range (free, budget, premium)"),
+    location_radius: Optional[float] = Query(None, description="Filter by distance in miles from user location"),
+    current_user: UserInDB = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get personalized event recommendations for the authenticated user.
+    
+    This endpoint returns event recommendations based on the user's profile, preferences, and interaction history.
+    Supports filtering by event type, date range, price range, and location radius.
+    """
+    try:
+        service = ContentRecommendationService(db)
+        
+        # Create recommendation request for events only
+        context = {}
+        if event_type:
+            context["event_type"] = event_type
+        if date_range:
+            context["date_range"] = date_range
+        if price_range:
+            context["price_range"] = price_range
+        if location_radius:
+            context["location_radius"] = location_radius
+            
+        request = RecommendationRequest(
+            user_id=current_user.id,
+            content_types=[ContentType.EVENT],
+            context=context
+        )
+        
+        # Get recommendations
+        response = service.get_recommendations(request)
+        
+        # Apply pagination
+        total_count = len(response.recommendations)
+        paginated_recommendations = response.recommendations[offset:offset + limit]
+        has_more = offset + limit < total_count
+        
+        return GetEventResponse(
+            event_recommendations=paginated_recommendations,
+            total_count=total_count,
+            has_more=has_more
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving event recommendations: {str(e)}")
+
+
+@router.get("/places", response_model=GetPlaceResponse)
+async def get_place_recommendations(
+    limit: int = Query(10, ge=1, le=50, description="Number of place recommendations to return"),
+    offset: int = Query(0, ge=0, description="Number of recommendations to skip"),
+    place_type: Optional[str] = Query(None, description="Filter by place type (restaurant, bar, cafe, attraction)"),
+    cuisine: Optional[str] = Query(None, description="Filter by cuisine type"),
+    price_range: Optional[str] = Query(None, description="Filter by price range ($, $$, $$$, $$$$)"),
+    atmosphere: Optional[str] = Query(None, description="Filter by atmosphere (casual, upscale, romantic, family-friendly)"),
+    location_radius: Optional[float] = Query(None, description="Filter by distance in miles from user location"),
+    current_user: UserInDB = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get personalized place recommendations for the authenticated user.
+    
+    This endpoint returns place recommendations based on the user's profile, preferences, and interaction history.
+    Supports filtering by place type, cuisine, price range, atmosphere, and location radius.
+    """
+    try:
+        service = ContentRecommendationService(db)
+        
+        # Create recommendation request for places only
+        context = {}
+        if place_type:
+            context["place_type"] = place_type
+        if cuisine:
+            context["cuisine"] = cuisine
+        if price_range:
+            context["price_range"] = price_range
+        if atmosphere:
+            context["atmosphere"] = atmosphere
+        if location_radius:
+            context["location_radius"] = location_radius
+            
+        request = RecommendationRequest(
+            user_id=current_user.id,
+            content_types=[ContentType.PLACE],
+            context=context
+        )
+        
+        # Get recommendations
+        response = service.get_recommendations(request)
+        
+        # Apply pagination
+        total_count = len(response.recommendations)
+        paginated_recommendations = response.recommendations[offset:offset + limit]
+        has_more = offset + limit < total_count
+        
+        return GetPlaceResponse(
+            place_recommendations=paginated_recommendations,
+            total_count=total_count,
+            has_more=has_more
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving place recommendations: {str(e)}")
+
+
 @router.get("/content", response_model=GetContentResponse)
-async def get_content_recommendations(
-    content_types: Optional[List[ContentType]] = Query(None, description="Filter by content types"),
+async def get_mixed_content_recommendations(
+    content_types: Optional[List[ContentType]] = Query(None, description="Filter by specific content types"),
     limit: int = Query(10, ge=1, le=50, description="Number of recommendations to return"),
     offset: int = Query(0, ge=0, description="Number of recommendations to skip"),
     current_user: UserInDB = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get personalized content recommendations for the authenticated user.
+    Get mixed personalized content recommendations for the authenticated user.
     
-    This endpoint returns recommendations based on the user's profile, preferences, and interaction history.
-    Recommendations are cached in Redis for fast retrieval and generated asynchronously when needed.
+    This endpoint returns recommendations from multiple content types based on the user's profile, preferences, and interaction history.
+    Use this endpoint when you want mixed recommendations across different content types.
+    For specific content types, use dedicated endpoints: /music, /movies, /events, /places
     """
     try:
         service = ContentRecommendationService(db)
@@ -55,7 +278,7 @@ async def get_content_recommendations(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving mixed content recommendations: {str(e)}")
 
 
 @router.post("/interaction", response_model=LogInteractionResponse)
@@ -177,4 +400,4 @@ async def health_check():
         "status": "healthy",
         "service": "content-recommendation",
         "timestamp": "2024-01-01T00:00:00Z"
-    } 
+    }

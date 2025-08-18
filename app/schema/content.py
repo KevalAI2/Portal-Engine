@@ -111,6 +111,70 @@ class GetContentResponse(BaseModel):
     has_more: bool
 
 
+# Music-specific schemas
+class GetMusicRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    offset: int = Field(default=0, ge=0)
+    genre: Optional[str] = Field(None, description="Filter by music genre")
+    mood: Optional[str] = Field(None, description="Filter by mood (upbeat, chill, energetic)")
+    decade: Optional[str] = Field(None, description="Filter by decade (e.g., '2020s', '90s')")
+
+
+class GetMusicResponse(BaseModel):
+    music_recommendations: List[ContentRecommendation]
+    total_count: int
+    has_more: bool
+
+
+# Movie-specific schemas
+class GetMovieRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    offset: int = Field(default=0, ge=0)
+    genre: Optional[str] = Field(None, description="Filter by movie genre")
+    rating: Optional[str] = Field(None, description="Filter by rating (G, PG, PG-13, R)")
+    release_year: Optional[int] = Field(None, description="Filter by release year")
+    duration: Optional[str] = Field(None, description="Filter by duration (short, medium, long)")
+
+
+class GetMovieResponse(BaseModel):
+    movie_recommendations: List[ContentRecommendation]
+    total_count: int
+    has_more: bool
+
+
+# Event-specific schemas
+class GetEventRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    offset: int = Field(default=0, ge=0)
+    event_type: Optional[str] = Field(None, description="Filter by event type (concert, festival, sports, theater)")
+    date_range: Optional[str] = Field(None, description="Filter by date range (today, this_week, this_month)")
+    price_range: Optional[str] = Field(None, description="Filter by price range (free, budget, premium)")
+    location_radius: Optional[float] = Field(None, description="Filter by distance in miles from user location")
+
+
+class GetEventResponse(BaseModel):
+    event_recommendations: List[ContentRecommendation]
+    total_count: int
+    has_more: bool
+
+
+# Place-specific schemas
+class GetPlaceRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    offset: int = Field(default=0, ge=0)
+    place_type: Optional[str] = Field(None, description="Filter by place type (restaurant, bar, cafe, attraction)")
+    cuisine: Optional[str] = Field(None, description="Filter by cuisine type")
+    price_range: Optional[str] = Field(None, description="Filter by price range ($, $$, $$$, $$$$)")
+    atmosphere: Optional[str] = Field(None, description="Filter by atmosphere (casual, upscale, romantic, family-friendly)")
+    location_radius: Optional[float] = Field(None, description="Filter by distance in miles from user location")
+
+
+class GetPlaceResponse(BaseModel):
+    place_recommendations: List[ContentRecommendation]
+    total_count: int
+    has_more: bool
+
+
 class LogInteractionRequest(BaseModel):
     content_id: int
     interaction_type: InteractionType
@@ -135,4 +199,4 @@ class RecommendationRequest(BaseModel):
 class RecommendationResponse(BaseModel):
     recommendations: List[ContentRecommendation]
     cache_hit: bool
-    generated_at: datetime 
+    generated_at: datetime
