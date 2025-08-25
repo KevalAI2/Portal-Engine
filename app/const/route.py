@@ -1,1 +1,0 @@
-DS = "/smart_recommender"

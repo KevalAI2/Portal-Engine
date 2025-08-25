@@ -1,1 +1,3 @@
-from . import app, database
+"""
+Core configuration and utilities for Portal Engine
+"""
