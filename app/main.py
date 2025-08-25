@@ -7,14 +7,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
+import sys
+import os
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.api.routers import recommendations, notifications, health
+from app.api.routers import recommendations, notifications, health, users
 
 # Configure logging
 logger = get_logger("main")
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -139,6 +142,8 @@ app.include_router(
     health.router,
     prefix=settings.api_prefix
 )
+
+app.include_router(users.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

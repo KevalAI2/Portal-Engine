@@ -12,7 +12,7 @@ from app.services.cis_service import CISService
 from app.services.prefetch_service import PrefetchService
 from app.services.cache_service import CacheService
 from app.utils.prompt_builder import PromptBuilder
-
+import time
 
 logger = get_logger("celery_tasks")
 
@@ -303,3 +303,29 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
             "error": str(e),
             "message": "Failed to generate recommendations"
         }
+
+@celery_app.task(bind=True, name="process_user")
+def process_user(self, user: Dict[str, Any]) -> None:
+    """Consumer task: process each user"""
+    logger.info("Processing user", user=user, task_id=self.request.id)
+    print(f"[✔] Processed user: {user['id']} - {user['name']}")
+
+
+@celery_app.task(bind=True, name="get_users")
+def get_users(self, count: int = 5, delay: int = 2) -> Dict[str, Any]:
+    """
+    Producer task: generate dummy users and enqueue them
+    """
+    logger.info("Starting user generation", task_id=self.request.id)
+
+    for i in range(1, count + 1):
+        user = {"id": i, "name": f"User-{i}", "email": f"user{i}@example.com"}
+        logger.info("Generated user", user=user)
+
+        # Send into RabbitMQ → Celery consumer picks it
+        process_user.delay(user)
+
+        time.sleep(delay)
+
+    logger.info("User generation completed", task_id=self.request.id)
+    return {"success": True, "generated_count": count}

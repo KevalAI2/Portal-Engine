@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     
     # API Settings
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
-    api_port: int = Field(default=8000, env="API_PORT")
+    api_port: int = Field(default=3031, env="API_PORT")
     api_prefix: str = Field(default="/api/v1", env="API_PREFIX")
     
     # Redis Settings
@@ -67,6 +67,9 @@ class Settings(BaseSettings):
         default=30, 
         env="RECOMMENDATION_REFRESH_INTERVAL_MINUTES"
     )
+
+    # Task interval
+    task_interval_seconds: int = Field(default=10, env="TASK_INTERVAL_SECONDS")
     
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")

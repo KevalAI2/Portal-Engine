@@ -32,13 +32,15 @@ celery_app.conf.update(
 # Configure logging
 logger = get_logger("celery")
 
+from app.workers.tasks import get_users
+
 @celery_app.on_after_configure.connect
 def setup_periodic_tasks(sender, **kwargs):
     """Setup periodic tasks"""
-    # Add periodic tasks here if needed
-    # sender.add_periodic_task(
-    #     crontab(minute=settings.recommendation_refresh_interval_minutes),
-    #     refresh_all_recommendations.s(),
-    #     name='refresh-recommendations'
-    # )
+    interval = settings.task_interval_seconds
+    sender.add_periodic_task(
+        interval,  # seconds
+        get_users.s(3, 1),  # pass args here (count=3, delay=1)
+        name=f"generate-users-every-{interval}-seconds"
+    )
     pass
