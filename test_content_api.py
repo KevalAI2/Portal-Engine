@@ -202,7 +202,9 @@ def main():
     print("\n" + "="*50)
     print("Test completed!")
     print("="*50)
+    print("="*50)
 
 
 if __name__ == "__main__":
     main() 
+
