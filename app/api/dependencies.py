@@ -2,12 +2,12 @@
 API dependencies for dependency injection
 """
 from typing import Generator
-from app.services.cache_service import CacheService
-from app.services.user_profile import UserProfileService
-from app.services.lie_service import LIEService
-from app.services.cis_service import CISService
-from app.services.prefetch_service import PrefetchService
-from app.workers.celery_app import celery_app
+from services.cache_service import CacheService
+from services.user_profile import UserProfileService
+from services.lie_service import LIEService
+from services.cis_service import CISService
+from services.prefetch_service import PrefetchService
+from workers.celery_app import celery_app
 
 
 def get_cache_service() -> CacheService:

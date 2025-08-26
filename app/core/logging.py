@@ -4,7 +4,7 @@ Logging configuration for Portal Engine
 import sys
 import structlog
 from typing import Any, Dict
-from app.core.config import settings
+from core.config import settings
 
 
 def setup_logging() -> None:

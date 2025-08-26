@@ -3,18 +3,18 @@ Recommendations API router
 """
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.core.logging import get_logger
-from app.core.constants import RecommendationType, API_MESSAGES, SUPPORTED_RECOMMENDATION_TYPES
-from app.models.schemas import (
+from core.logging import get_logger
+from core.constants import RecommendationType, API_MESSAGES, SUPPORTED_RECOMMENDATION_TYPES
+from models.schemas import (
     RecommendationResponse, 
     RefreshRequest, 
     APIResponse,
     TaskStatusResponse
 )
-from app.services.cache_service import CacheService
-from app.workers.celery_app import celery_app
-from app.workers.tasks import generate_recommendations
-from app.api.dependencies import get_cache_service
+from services.cache_service import CacheService
+from workers.celery_app import celery_app
+from workers.tasks import generate_recommendations
+from api.dependencies import get_cache_service
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 logger = get_logger("recommendations_router")

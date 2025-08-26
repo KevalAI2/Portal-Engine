@@ -3,15 +3,16 @@ Celery tasks for recommendation processing
 """
 import asyncio
 from typing import Dict, Any, List, Optional
-from app.workers.celery_app import celery_app
-from app.core.logging import get_logger
-from app.core.constants import RecommendationType, TaskStatus
-from app.services.user_profile import UserProfileService
-from app.services.lie_service import LIEService
-from app.services.cis_service import CISService
-from app.services.prefetch_service import PrefetchService
-from app.services.cache_service import CacheService
-from app.utils.prompt_builder import PromptBuilder
+from workers.celery_app import celery_app
+from core.logging import get_logger
+from core.config import settings
+from core.constants import RecommendationType, TaskStatus
+from services.user_profile import UserProfileService
+from services.lie_service import LIEService
+from services.cis_service import CISService
+from services.prefetch_service import PrefetchService
+from services.cache_service import CacheService
+from utils.prompt_builder import PromptBuilder
 import time
 
 logger = get_logger("celery_tasks")
@@ -92,7 +93,7 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
             raise ValueError("Incomplete user data for prompt building")
         
         # Convert to Pydantic models
-        from app.models.schemas import UserProfile, LocationData, InteractionData
+        from models.schemas import UserProfile, LocationData, InteractionData
         
         user_profile = UserProfile(**user_profile_data)
         location = LocationData(**location_data)
@@ -304,28 +305,102 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
             "message": "Failed to generate recommendations"
         }
 
-@celery_app.task(bind=True, name="process_user")
-def process_user(self, user: Dict[str, Any]) -> None:
-    """Consumer task: process each user"""
-    logger.info("Processing user", user=user, task_id=self.request.id)
-    print(f"[✔] Processed user: {user['id']} - {user['name']}")
+@celery_app.task(bind=True, name="process_user", acks_late=True, reject_on_worker_lost=True)
+def process_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
+    """Consumer task: process each user independently on separate worker"""
+    try:
+        user_id = user.get('id')
+        user_name = user.get('name')
+        priority = user.get('priority', 0)
+        
+        logger.info("Processing user", user_id=user_id, user_name=user_name, task_id=self.request.id)
+        
+        # Get worker info for independent processing tracking
+        worker_id = self.request.hostname
+        worker_pid = os.getpid()
+        
+        # Simulate processing time (you can replace this with actual processing logic)
+        import time
+        time.sleep(0.1)  # 100ms processing time
+        
+        # Enhanced console output for independent worker visibility
+        print(f"\n🔧 INDEPENDENT WORKER PROCESSING:")
+        print(f"   👤 User: {user_id} - {user_name}")
+        print(f"   🔧 Worker: {worker_id} (PID: {worker_pid})")
+        print(f"   📋 Task ID: {self.request.id}")
+        print(f"   🎯 Priority: {priority}")
+        print(f"   ⏱️  Processing time: 100ms")
+        print(f"   ✅ Status: Completed independently")
+        print(f"   💬 Message: Hello World! User {user_name} processed on dedicated worker\n")
+        
+        logger.info("User processing completed independently", user_id=user_id, worker_id=worker_id, task_id=self.request.id)
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "user_name": user_name,
+            "worker_id": worker_id,
+            "worker_pid": worker_pid,
+            "priority": priority,
+            "processed_at": time.time(),
+            "task_id": self.request.id,
+            "message": f"Hello World! User {user_name} processed on dedicated worker"
+        }
+        
+    except Exception as e:
+        logger.error("User processing failed", user_id=user.get('id'), task_id=self.request.id, error=str(e))
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to process user"
+        }
 
 
 @celery_app.task(bind=True, name="get_users")
-def get_users(self, count: int = 5, delay: int = 2) -> Dict[str, Any]:
+def get_users(self, count: int = 5, delay: int = 1) -> Dict[str, Any]:
     """
-    Producer task: generate dummy users and enqueue them
+    Producer task: generate dummy users and enqueue them for independent processing
+    Each user gets assigned to a separate worker for parallel processing
     """
-    logger.info("Starting user generation", task_id=self.request.id)
+    logger.info("Starting user generation", count=count, delay=delay, task_id=self.request.id)
+    
+    print(f"\n🎯 PRODUCER TASK: Generating {count} users (Task ID: {self.request.id})")
+    print(f"   ⏰ Interval: Every {settings.task_interval_seconds} seconds")
+    print(f"   🔧 Workers: {settings.celery_worker_concurrency} concurrent workers")
+    print(f"   🚀 Strategy: Each user → Separate worker (Independent processing)\n")
 
     for i in range(1, count + 1):
-        user = {"id": i, "name": f"User-{i}", "email": f"user{i}@example.com"}
-        logger.info("Generated user", user=user)
+        user = {
+            "id": i, 
+            "name": f"User-{i}", 
+            "email": f"user{i}@example.com",
+            "timestamp": time.time(),
+            "priority": i  # Add priority for better worker assignment
+        }
+        logger.info("Generated user", user_id=i, user_name=user["name"])
+        
+        print(f"📤 QUEUING: User-{i} → RabbitMQ → Independent Worker")
 
-        # Send into RabbitMQ → Celery consumer picks it
-        process_user.delay(user)
+        # Send into RabbitMQ → Each user gets a separate worker
+        # Using apply_async with routing_key based on user ID for worker isolation
+        process_user.apply_async(
+            args=[user],
+            queue="user_processing",
+            routing_key=f"user_processing_{i % settings.celery_worker_concurrency}",  # Distribute across workers
+            priority=i,  # Higher priority for newer users
+            expires=None,  # No expiration - queue is independent
+            retry=True,
+            retry_policy={
+                'max_retries': 3,
+                'interval_start': 0,
+                'interval_step': 0.2,
+                'interval_max': 0.2,
+            }
+        )
 
-        time.sleep(delay)
+        if delay > 0:
+            time.sleep(delay)
 
-    logger.info("User generation completed", task_id=self.request.id)
+    logger.info("User generation completed", count=count, task_id=self.request.id)
+    print(f"✅ PRODUCER COMPLETED: {count} users queued for independent processing\n")
     return {"success": True, "generated_count": count}

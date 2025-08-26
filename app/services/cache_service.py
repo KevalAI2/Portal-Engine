@@ -5,10 +5,10 @@ import json
 import redis
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from app.core.logging import get_logger
-from app.core.config import settings
-from app.core.constants import REDIS_KEY_PATTERNS, CACHE_TTL
-from app.models.schemas import RecommendationResponse, RecommendationItem
+from core.logging import get_logger
+from core.config import settings
+from core.constants import REDIS_KEY_PATTERNS, CACHE_TTL
+from models.schemas import RecommendationResponse, RecommendationItem
 
 
 class CacheService:

@@ -2,9 +2,9 @@
 Prompt Builder utility for constructing dynamic LLM prompts
 """
 from typing import Dict, Any, List
-from app.core.logging import get_logger
-from app.models.schemas import UserProfile, LocationData, InteractionData
-from app.core.constants import RecommendationType
+from core.logging import get_logger
+from models.schemas import UserProfile, LocationData, InteractionData
+from core.constants import RecommendationType
 
 
 class PromptBuilder:

@@ -1,14 +1,14 @@
 """
-CIS (Customer Interaction Service) integration
+CIS (Content Interaction Service) integration
 """
 from typing import Optional
-from app.services.base import BaseService
-from app.models.schemas import InteractionData
-from app.core.config import settings
+from services.base import BaseService
+from models.schemas import InteractionData
+from core.config import settings
 
 
 class CISService(BaseService):
-    """Integration with CIS (Customer Interaction Service)"""
+    """Integration with CIS (Content Interaction Service)"""
     
     def __init__(self):
         super().__init__(settings.cis_service_url)

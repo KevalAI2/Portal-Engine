@@ -2,8 +2,8 @@
 Prefetch Service (LLM) integration
 """
 from typing import Optional, Dict, Any, List
-from app.services.base import BaseService
-from app.core.config import settings
+from services.base import BaseService
+from core.config import settings
 
 
 class PrefetchService(BaseService):

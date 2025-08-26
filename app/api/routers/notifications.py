@@ -3,10 +3,10 @@ Notifications API router
 """
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.core.logging import get_logger
-from app.models.schemas import NotificationItem, APIResponse
-from app.services.cache_service import CacheService
-from app.api.dependencies import get_cache_service
+from core.logging import get_logger
+from models.schemas import NotificationItem, APIResponse
+from services.cache_service import CacheService
+from api.dependencies import get_cache_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 logger = get_logger("notifications_router")

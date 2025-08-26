@@ -4,7 +4,7 @@ Pydantic schemas for API requests and responses
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
-from app.core.constants import RecommendationType, TaskStatus, NotificationType
+from core.constants import RecommendationType, TaskStatus, NotificationType
 
 
 class UserProfile(BaseModel):

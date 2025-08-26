@@ -3,8 +3,8 @@ Base service class for external service integrations
 """
 import httpx
 from typing import Optional, Dict, Any
-from app.core.logging import get_logger
-from app.core.config import settings
+from core.logging import get_logger
+from core.config import settings
 
 
 class BaseService:

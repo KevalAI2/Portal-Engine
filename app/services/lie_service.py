@@ -1,14 +1,14 @@
 """
-LIE (Location Information Engine) Service integration
+LIE (Location Intelligence Engine) Service integration
 """
 from typing import Optional
-from app.services.base import BaseService
-from app.models.schemas import LocationData
-from app.core.config import settings
+from services.base import BaseService
+from models.schemas import LocationData
+from core.config import settings
 
 
 class LIEService(BaseService):
-    """Integration with LIE (Location Information Engine) Service"""
+    """Integration with LIE (Location Intelligence Engine) Service"""
     
     def __init__(self):
         super().__init__(settings.lie_service_url)

@@ -2,9 +2,9 @@
 User Profile Service integration
 """
 from typing import Optional
-from app.services.base import BaseService
-from app.models.schemas import UserProfile
-from app.core.config import settings
+from services.base import BaseService
+from models.schemas import UserProfile
+from core.config import settings
 
 
 class UserProfileService(BaseService):

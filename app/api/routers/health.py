@@ -3,15 +3,15 @@ Health check API router
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends
-from app.core.logging import get_logger
-from app.core.config import settings
-from app.models.schemas import HealthCheckResponse
-from app.services.cache_service import CacheService
-from app.services.user_profile import UserProfileService
-from app.services.lie_service import LIEService
-from app.services.cis_service import CISService
-from app.services.prefetch_service import PrefetchService
-from app.api.dependencies import (
+from core.logging import get_logger
+from core.config import settings
+from models.schemas import HealthCheckResponse
+from services.cache_service import CacheService
+from services.user_profile import UserProfileService
+from services.lie_service import LIEService
+from services.cis_service import CISService
+from services.prefetch_service import PrefetchService
+from api.dependencies import (
     get_cache_service,
     get_user_profile_service,
     get_lie_service,

@@ -10,9 +10,9 @@ import time
 import sys
 import os
 
-from app.core.config import settings
-from app.core.logging import get_logger
-from app.api.routers import recommendations, notifications, health, users
+from core.config import settings
+from core.logging import get_logger
+from api.routers import recommendations, notifications, health, users
 
 # Configure logging
 logger = get_logger("main")
@@ -142,9 +142,6 @@ app.include_router(
     health.router,
     prefix=settings.api_prefix
 )
-
-app.include_router(users.router, prefix=settings.api_prefix)
-
 
 @app.get("/")
 async def root():
