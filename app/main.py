@@ -143,6 +143,11 @@ app.include_router(
     prefix=settings.api_prefix
 )
 
+app.include_router(
+    users.router,
+    prefix=settings.api_prefix
+)
+
 @app.get("/")
 async def root():
     """Root endpoint"""

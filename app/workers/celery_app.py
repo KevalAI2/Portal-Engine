@@ -38,7 +38,7 @@ celery_app.conf.update(
     task_default_routing_key="user_processing",
     # Advanced settings for maximum throughput
     worker_direct=True,  # Direct routing for faster task distribution
-    task_ignore_result=True,  # Ignore results for faster processing
+    task_ignore_result=False,  # Store results for status checking
     task_store_errors_even_if_ignored=True,  # Store errors even if results ignored
     worker_send_task_events=True,  # Send task events for monitoring
     task_send_sent_event=True,  # Send sent events for tracking
@@ -50,15 +50,15 @@ celery_app.conf.update(
 # Configure logging
 logger = get_logger("celery")
 
-from workers.tasks import get_users
-
 @celery_app.on_after_configure.connect
 def setup_periodic_tasks(sender, **kwargs):
     """Setup periodic tasks"""
+    # Import here to avoid circular import
+    from workers.tasks import get_users
+    
     interval = settings.task_interval_seconds
     sender.add_periodic_task(
         interval,  # seconds
         get_users.s(3, 1),  # pass args here (count=3, delay=1)
         name=f"generate-users-every-{interval}-seconds"
     )
-    pass
