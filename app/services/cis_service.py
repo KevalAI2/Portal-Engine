@@ -261,14 +261,30 @@ class CISService(BaseService):
             }
         }
         
-        # Calculate enhanced engagement score
+        # Calculate enhanced engagement score with more varied distribution
         recent_engagement_scores = [interaction["engagement_score"] for interaction in recent_interactions]
-        avg_engagement = sum(recent_engagement_scores) / len(recent_engagement_scores) if recent_engagement_scores else 0.5
         
-        # Add some variability based on user patterns
-        engagement_multiplier = random.uniform(0.7, 1.3)
+        # Use a more varied base score distribution
+        base_score_options = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        weights = [0.1, 0.15, 0.2, 0.25, 0.2, 0.15, 0.1, 0.05]  # More weight to medium scores
+        
+        if recent_engagement_scores:
+            avg_engagement = sum(recent_engagement_scores) / len(recent_engagement_scores)
+        else:
+            # Use weighted random selection for base score
+            avg_engagement = random.choices(base_score_options, weights=weights)[0]
+        
+        # Add more variability based on user patterns
+        engagement_multiplier = random.uniform(0.6, 1.4)  # Wider range
         engagement_score = round(avg_engagement * engagement_multiplier, 2)
         engagement_score = min(1.0, max(0.0, engagement_score))
+        
+        # Ensure we get a good distribution of engagement levels
+        # Force some high and low scores occasionally
+        if random.random() < 0.2:  # 20% chance for high engagement
+            engagement_score = round(random.uniform(0.75, 0.95), 2)
+        elif random.random() < 0.15:  # 15% chance for low engagement
+            engagement_score = round(random.uniform(0.15, 0.35), 2)
         
         # Build comprehensive interaction data
         interaction_data = {

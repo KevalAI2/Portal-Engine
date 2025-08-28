@@ -1,5 +1,5 @@
 """
-Prompt Builder utility for constructing dynamic LLM prompts
+Prompt Builder utility for constructing ranking-based natural language prompts
 """
 from typing import Dict, Any, List
 from core.logging import get_logger
@@ -8,10 +8,102 @@ from core.constants import RecommendationType
 
 
 class PromptBuilder:
-    """Dynamic prompt builder for LLM recommendations"""
+    """Ranking-based prompt builder for nuanced recommendations"""
     
     def __init__(self):
         self.logger = get_logger(self.__class__.__name__)
+    
+    def _get_ranking_language(self, score: float) -> str:
+        """Convert similarity score to ranking language"""
+        if score >= 0.9:
+            return "very likely"
+        elif score >= 0.8:
+            return "likely"
+        elif score >= 0.7:
+            return "may be like"
+        elif score >= 0.6:
+            return "somewhat interested in"
+        elif score >= 0.5:
+            return "not very interested in"
+        else:
+            return "not like"
+    
+    def _extract_top_interests(self, profile_data: Dict[str, Any], limit: int = 8) -> List[str]:
+        """Extract top interests based on similarity scores"""
+        interests = []
+        
+        # Check if preferences exist in the profile data
+        preferences = profile_data.get("preferences", {})
+        
+        # Extract from keywords (legacy)
+        if "Keywords (legacy)" in preferences:
+            keywords_data = preferences["Keywords (legacy)"]
+            if "example_values" in keywords_data:
+                keywords = keywords_data["example_values"]
+                for item in keywords[:limit//2]:
+                    if "similarity_score" in item and "value" in item:
+                        ranking = self._get_ranking_language(item["similarity_score"])
+                        interests.append(f"{ranking} {item['value']}")
+        
+        # Extract from archetypes (legacy)
+        if "Archetypes (legacy)" in preferences:
+            archetypes_data = preferences["Archetypes (legacy)"]
+            if "example_values" in archetypes_data:
+                archetypes = archetypes_data["example_values"]
+                for item in archetypes[:limit//4]:
+                    if "similarity_score" in item and "value" in item:
+                        ranking = self._get_ranking_language(item["similarity_score"])
+                        interests.append(f"{ranking} {item['value']}")
+        
+        # Extract from music genres
+        if "Music Genres" in preferences:
+            music_data = preferences["Music Genres"]
+            if "example_values" in music_data:
+                music_genres = music_data["example_values"]
+                for item in music_genres[:limit//4]:
+                    if "similarity_score" in item and "value" in item:
+                        ranking = self._get_ranking_language(item["similarity_score"])
+                        interests.append(f"{ranking} {item['value']}")
+        
+        # Extract from dining preferences
+        if "Dining preferences (cuisine)" in preferences:
+            dining_data = preferences["Dining preferences (cuisine)"]
+            if "example_values" in dining_data:
+                cuisines = dining_data["example_values"]
+                for item in cuisines[:limit//4]:
+                    if "similarity_score" in item and "value" in item:
+                        ranking = self._get_ranking_language(item["similarity_score"])
+                        interests.append(f"{ranking} {item['value']}")
+        
+        return interests[:limit]
+    
+    def _extract_location_preferences(self, location_data: Dict[str, Any]) -> List[str]:
+        """Extract location preferences based on ranking"""
+        preferences = []
+        
+        # Extract from location patterns
+        if "location_patterns" in location_data:
+            patterns = location_data["location_patterns"]
+            for pattern in patterns[:3]:
+                if "similarity" in pattern and "venue_type" in pattern:
+                    ranking = self._get_ranking_language(pattern["similarity"])
+                    preferences.append(f"{ranking} {pattern['venue_type']}")
+        
+        return preferences
+    
+    def _extract_interaction_preferences(self, interaction_data: Dict[str, Any]) -> List[str]:
+        """Extract interaction preferences based on ranking"""
+        preferences = []
+        
+        # Extract from interaction patterns
+        if "interaction_patterns" in interaction_data:
+            patterns = interaction_data["interaction_patterns"]
+            for pattern in patterns[:3]:
+                if "similarity" in pattern and "content_type" in pattern:
+                    ranking = self._get_ranking_language(pattern["similarity"])
+                    preferences.append(f"{ranking} {pattern['content_type']}")
+        
+        return preferences
     
     def build_recommendation_prompt(
         self,
@@ -21,198 +113,95 @@ class PromptBuilder:
         recommendation_type: RecommendationType,
         max_results: int = 10
     ) -> str:
-        """Build a dynamic prompt for recommendation generation"""
+        """Build ranking-based recommendation prompt for multiple categories"""
         
-        # Base prompt template
-        base_prompt = self._get_base_prompt(recommendation_type)
+        # Extract profile data
+        profile_data = user_profile.dict() if hasattr(user_profile, 'dict') else user_profile
+        location_dict = location_data.dict() if hasattr(location_data, 'dict') else location_data
+        interaction_dict = interaction_data.dict() if hasattr(interaction_data, 'dict') else interaction_data
         
-        # Build user context
-        user_context = self._build_user_context(user_profile, location_data, interaction_data)
+        # Get ranking-based interests
+        top_interests = self._extract_top_interests(profile_data)
+        location_prefs = self._extract_location_preferences(location_dict)
+        interaction_prefs = self._extract_interaction_preferences(interaction_dict)
         
-        # Build specific context based on recommendation type
-        type_context = self._build_type_context(recommendation_type, user_profile, location_data)
+        # Safely extract location information
+        current_city = "Unknown"
+        current_state = ""
+        if "current_location" in location_dict:
+            current_loc = location_dict["current_location"]
+            if isinstance(current_loc, dict):
+                current_city = current_loc.get('city', 'Unknown')
+                current_state = current_loc.get('state', '')
+            elif isinstance(current_loc, str):
+                current_city = current_loc
         
-        # Combine all parts
-        prompt = f"""
-{base_prompt}
+        # Safely extract engagement score
+        engagement_score = 0.5
+        if "engagement_score" in interaction_dict:
+            engagement_score = interaction_dict["engagement_score"]
+        elif hasattr(interaction_data, 'engagement_score'):
+            engagement_score = interaction_data.engagement_score
+        
+        # Build comprehensive multi-category recommendation prompt
+        prompt = f"""You are an expert recommendation system. Based on the following user profile with ranking preferences, provide multiple personalized recommendations across 4 different categories in JSON format.
 
-USER CONTEXT:
-{user_context}
+USER PROFILE:
+Name: {profile_data.get('name', 'Unknown User')}
+Age: {profile_data.get('age', 'Unknown')}
+Currently in: {current_city}, {current_state}
+Home: {profile_data.get('home_location', 'Unknown')}
 
-SPECIFIC CONTEXT:
-{type_context}
+RANKING-BASED INTERESTS:
+{chr(10).join(f"• {interest}" for interest in top_interests)}
 
-INSTRUCTIONS:
-- Generate exactly {max_results} personalized recommendations
-- Each recommendation should be relevant to the user's profile and context
-- Provide a confidence score between 0.0 and 1.0 for each recommendation
-- Include relevant metadata for each recommendation
-- Format the response as a structured list
+LOCATION PREFERENCES:
+{chr(10).join(f"• {pref}" for pref in location_prefs)}
 
-Please provide {max_results} {recommendation_type} recommendations for this user.
-"""
+INTERACTION PREFERENCES:
+{chr(10).join(f"• {pref}" for pref in interaction_prefs)}
+
+RECOMMENDATION CONTEXT:
+Location: {current_city}, {current_state}
+Engagement level: {engagement_score:.2f} (High if >0.7, Medium if 0.4-0.7, Low if <0.4)
+
+Please provide 3-5 recommendations for each of the following 4 categories in JSON format. Focus on items that match their "very likely" and "likely" interests while avoiding what they "not like".
+
+Respond with a JSON object in this exact format:
+{{
+  "movies": [
+    {{
+      "title": "Movie Title",
+      "year": "Year",
+      "genre": "Movie Genre",
+      "description": "Short one-line description",
+      "reason": "Brief explanation of why it matches their ranking preferences"
+    }}
+  ],
+  "music": [
+    {{
+      "title": "Album/Artist Name",
+      "genre": "Music Genre",
+      "description": "Short one-line description",
+      "reason": "Brief explanation of why it matches their ranking preferences"
+    }}
+  ],
+  "places": [
+    {{
+      "name": "Place Name",
+      "type": "Restaurant/Attraction/Activity",
+      "description": "Short one-line description",
+      "reason": "Brief explanation of why it matches their ranking preferences"
+    }}
+  ],
+  "events": [
+    {{
+      "name": "Event Name",
+      "date": "Event Date/Time",
+      "description": "Short one-line description",
+      "reason": "Brief explanation of why it matches their ranking preferences"
+    }}
+  ]
+}}"""
         
-        self.logger.info(
-            "Built recommendation prompt",
-            recommendation_type=recommendation_type,
-            user_id=user_profile.user_id,
-            prompt_length=len(prompt)
-        )
-        
-        return prompt.strip()
-    
-    def _get_base_prompt(self, recommendation_type: RecommendationType) -> str:
-        """Get base prompt template for recommendation type"""
-        
-        base_prompts = {
-            RecommendationType.MUSIC: """
-You are an expert music recommendation system. Based on the user's profile, location, and interaction history, 
-provide personalized music recommendations that match their taste and current context.
-""",
-            RecommendationType.MOVIE: """
-You are an expert movie recommendation system. Based on the user's profile, location, and interaction history, 
-provide personalized movie recommendations that match their preferences and current mood.
-""",
-            RecommendationType.PLACE: """
-You are an expert location-based recommendation system. Based on the user's profile, current location, and preferences, 
-provide personalized place recommendations (restaurants, attractions, services) that are relevant and accessible.
-""",
-            RecommendationType.EVENT: """
-You are an expert event recommendation system. Based on the user's profile, location, and interests, 
-provide personalized event recommendations that match their schedule and preferences.
-"""
-        }
-        
-        return base_prompts.get(recommendation_type, "Provide personalized recommendations based on the user context.")
-    
-    def _build_user_context(
-        self, 
-        user_profile: UserProfile, 
-        location_data: LocationData, 
-        interaction_data: InteractionData
-    ) -> str:
-        """Build comprehensive user context for the prompt"""
-        
-        context_parts = []
-        
-        # Basic profile information
-        if user_profile.name:
-            context_parts.append(f"Name: {user_profile.name}")
-        if user_profile.age:
-            context_parts.append(f"Age: {user_profile.age}")
-        if user_profile.location:
-            context_parts.append(f"General Location: {user_profile.location}")
-        
-        # Interests and preferences
-        if user_profile.interests:
-            context_parts.append(f"Interests: {', '.join(user_profile.interests)}")
-        if user_profile.preferences:
-            context_parts.append(f"Preferences: {self._format_preferences(user_profile.preferences)}")
-        
-        # Location context
-        if location_data.current_location:
-            context_parts.append(f"Current Location: {location_data.current_location}")
-        if location_data.home_location:
-            context_parts.append(f"Home Location: {location_data.home_location}")
-        if location_data.work_location:
-            context_parts.append(f"Work Location: {location_data.work_location}")
-        if location_data.travel_history:
-            context_parts.append(f"Recent Travel: {', '.join(location_data.travel_history[-5:])}")
-        
-        # Interaction context
-        if interaction_data.engagement_score:
-            context_parts.append(f"Engagement Level: {interaction_data.engagement_score:.2f}")
-        if interaction_data.recent_interactions:
-            context_parts.append(f"Recent Activity: {self._format_interactions(interaction_data.recent_interactions)}")
-        
-        return "\n".join(context_parts) if context_parts else "Limited user context available."
-    
-    def _build_type_context(
-        self, 
-        recommendation_type: RecommendationType, 
-        user_profile: UserProfile, 
-        location_data: LocationData
-    ) -> str:
-        """Build type-specific context for the recommendation"""
-        
-        if recommendation_type == RecommendationType.MUSIC:
-            return self._build_music_context(user_profile, location_data)
-        elif recommendation_type == RecommendationType.MOVIE:
-            return self._build_movie_context(user_profile, location_data)
-        elif recommendation_type == RecommendationType.PLACE:
-            return self._build_place_context(user_profile, location_data)
-        elif recommendation_type == RecommendationType.EVENT:
-            return self._build_event_context(user_profile, location_data)
-        else:
-            return "General recommendation context."
-    
-    def _build_music_context(self, user_profile: UserProfile, location_data: LocationData) -> str:
-        """Build music-specific context"""
-        context = "Music preferences and listening context:"
-        
-        if user_profile.preferences.get("music"):
-            context += f"\n- Music preferences: {self._format_preferences(user_profile.preferences['music'])}"
-        
-        if location_data.current_location:
-            context += f"\n- Current location for music context: {location_data.current_location}"
-        
-        return context
-    
-    def _build_movie_context(self, user_profile: UserProfile, location_data: LocationData) -> str:
-        """Build movie-specific context"""
-        context = "Movie preferences and viewing context:"
-        
-        if user_profile.preferences.get("movies"):
-            context += f"\n- Movie preferences: {self._format_preferences(user_profile.preferences['movies'])}"
-        
-        if location_data.current_location:
-            context += f"\n- Current location for movie availability: {location_data.current_location}"
-        
-        return context
-    
-    def _build_place_context(self, user_profile: UserProfile, location_data: LocationData) -> str:
-        """Build place-specific context"""
-        context = "Location-based recommendations context:"
-        
-        if location_data.current_location:
-            context += f"\n- Current location: {location_data.current_location}"
-        if location_data.location_preferences:
-            context += f"\n- Location preferences: {self._format_preferences(location_data.location_preferences)}"
-        
-        return context
-    
-    def _build_event_context(self, user_profile: UserProfile, location_data: LocationData) -> str:
-        """Build event-specific context"""
-        context = "Event recommendations context:"
-        
-        if location_data.current_location:
-            context += f"\n- Current location for event proximity: {location_data.current_location}"
-        if user_profile.interests:
-            context += f"\n- Event interests: {', '.join(user_profile.interests)}"
-        
-        return context
-    
-    def _format_preferences(self, preferences: Dict[str, Any]) -> str:
-        """Format preferences dictionary for prompt"""
-        if isinstance(preferences, dict):
-            return ", ".join([f"{k}: {v}" for k, v in preferences.items()])
-        return str(preferences)
-    
-    def _format_interactions(self, interactions: List[Dict[str, Any]]) -> str:
-        """Format recent interactions for prompt"""
-        if not interactions:
-            return "No recent interactions"
-        
-        # Take last 3 interactions and format them
-        recent = interactions[-3:]
-        formatted = []
-        
-        for interaction in recent:
-            if isinstance(interaction, dict):
-                action = interaction.get("action", "unknown")
-                timestamp = interaction.get("timestamp", "")
-                formatted.append(f"{action} ({timestamp})")
-            else:
-                formatted.append(str(interaction))
-        
-        return "; ".join(formatted)
+        return prompt
