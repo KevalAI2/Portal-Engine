@@ -6,17 +6,13 @@ from fastapi import APIRouter, Depends
 from core.logging import get_logger
 from core.config import settings
 from models.schemas import HealthCheckResponse
-from services.cache_service import CacheService
 from services.user_profile import UserProfileService
 from services.lie_service import LIEService
 from services.cis_service import CISService
-from services.prefetch_service import PrefetchService
 from api.dependencies import (
-    get_cache_service,
     get_user_profile_service,
     get_lie_service,
-    get_cis_service,
-    get_prefetch_service
+    get_cis_service
 )
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -25,11 +21,9 @@ logger = get_logger("health_router")
 
 @router.get("/", response_model=HealthCheckResponse)
 async def health_check(
-    cache_service: CacheService = Depends(get_cache_service),
     user_profile_service: UserProfileService = Depends(get_user_profile_service),
     lie_service: LIEService = Depends(get_lie_service),
-    cis_service: CISService = Depends(get_cis_service),
-    prefetch_service: PrefetchService = Depends(get_prefetch_service)
+    cis_service: CISService = Depends(get_cis_service)
 ):
     """
     Health check endpoint to verify service status and dependencies
@@ -39,10 +33,6 @@ async def health_check(
         
         # Check service health
         services_status = {}
-        
-        # Check Redis
-        redis_healthy = await cache_service.health_check()
-        services_status["redis"] = "healthy" if redis_healthy else "unhealthy"
         
         # Check external services (these might fail in development)
         try:
@@ -62,12 +52,6 @@ async def health_check(
             services_status["cis_service"] = "healthy" if cis_healthy else "unhealthy"
         except Exception:
             services_status["cis_service"] = "unavailable"
-        
-        try:
-            prefetch_healthy = await prefetch_service.health_check()
-            services_status["prefetch_service"] = "healthy" if prefetch_healthy else "unhealthy"
-        except Exception:
-            services_status["prefetch_service"] = "unavailable"
         
         # Determine overall status
         overall_status = "healthy"

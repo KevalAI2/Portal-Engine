@@ -310,38 +310,4 @@ class UserProfileService(BaseService):
                             user_id=user_id, error=str(e))
             return None
     
-    async def get_user_preferences(self, user_id: str) -> Optional[dict]:
-        """Fetch user preferences - returns schema-based mock preferences"""
-        try:
-            self.logger.info("Generating schema-based mock user preferences", user_id=user_id)
-            
-            # Generate mock profile data and extract preferences
-            profile_data = self._generate_schema_based_profile(user_id)
-            
-            self.logger.info("Schema-based mock user preferences generated successfully", user_id=user_id)
-            
-            return profile_data.get("preferences", {})
-            
-        except Exception as e:
-            self.logger.error("Failed to generate schema-based mock user preferences", 
-                            user_id=user_id, error=str(e))
-            return None
-    
-    async def get_user_interests(self, user_id: str) -> Optional[List[str]]:
-        """Fetch user interests - returns schema-based mock interests"""
-        try:
-            self.logger.info("Generating schema-based mock user interests", user_id=user_id)
-            
-            # Generate mock profile data and extract interests
-            profile_data = self._generate_schema_based_profile(user_id)
-            
-            self.logger.info("Schema-based mock user interests generated successfully", 
-                           user_id=user_id, 
-                           interest_count=len(profile_data.get("interests", [])))
-            
-            return profile_data.get("interests", [])
-            
-        except Exception as e:
-            self.logger.error("Failed to generate schema-based mock user interests", 
-                            user_id=user_id, error=str(e))
-            return None
+

@@ -2,13 +2,14 @@
 Users API router
 """
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from core.logging import get_logger
 from models.schemas import UserProfile, APIResponse
 from services.user_profile import UserProfileService
 from services.lie_service import LIEService
 from services.cis_service import CISService
-from workers.tasks import process_user_comprehensive, generate_user_prompt
+from services.llm_service import llm_service
+from workers.tasks import process_user_comprehensive
 
 router = APIRouter(prefix="/users", tags=["users"])
 logger = get_logger("users_router")
@@ -46,108 +47,7 @@ async def get_user_profile(user_id: str):
         )
 
 
-@router.get("/{user_id}/preferences")
-async def get_user_preferences(user_id: str):
-    """
-    Get user preferences with comprehensive mock data
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user preferences", user_id=user_id)
-        
-        user_service = UserProfileService()
-        preferences = await user_service.get_user_preferences(user_id)
-        
-        if not preferences:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User preferences not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user preferences", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "preferences": preferences,
-            "message": "User preferences retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user preferences", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user preferences"
-        )
 
-
-@router.get("/{user_id}/interests")
-async def get_user_interests(user_id: str):
-    """
-    Get user interests
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user interests", user_id=user_id)
-        
-        user_service = UserProfileService()
-        interests = await user_service.get_user_interests(user_id)
-        
-        if not interests:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User interests not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user interests", user_id=user_id, interest_count=len(interests))
-        return {
-            "success": True,
-            "user_id": user_id,
-            "interests": interests,
-            "count": len(interests),
-            "message": "User interests retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user interests", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user interests"
-        )
-
-
-@router.get("/{user_id}/profile/raw")
-async def get_user_profile_raw(user_id: str):
-    """
-    Get raw user profile data (including all mock data details)
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting raw user profile data", user_id=user_id)
-        
-        user_service = UserProfileService()
-        profile_data = user_service._generate_mock_profile_data(user_id)
-        
-        logger.info("Retrieved raw user profile data", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "profile_data": profile_data,
-            "message": "Raw user profile data retrieved successfully"
-        }
-        
-    except Exception as e:
-        logger.error("Error getting raw user profile data", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve raw user profile data"
-        )
 
 
 @router.get("/{user_id}/location")
@@ -182,145 +82,7 @@ async def get_user_location_data(user_id: str):
         )
 
 
-@router.get("/{user_id}/location/raw")
-async def get_user_location_raw(user_id: str):
-    """
-    Get raw location data with all details
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting raw user location data", user_id=user_id)
-        
-        lie_service = LIEService()
-        location_data = lie_service._generate_mock_location_data(user_id)
-        
-        logger.info("Retrieved raw user location data", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "location_data": location_data,
-            "message": "Raw user location data retrieved successfully"
-        }
-        
-    except Exception as e:
-        logger.error("Error getting raw user location data", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve raw user location data"
-        )
 
-
-@router.get("/{user_id}/location/current")
-async def get_user_current_location(user_id: str):
-    """
-    Get user's current location
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user current location", user_id=user_id)
-        
-        lie_service = LIEService()
-        current_location = await lie_service.get_current_location(user_id)
-        
-        if not current_location:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Current location not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user current location", user_id=user_id, location=current_location)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "current_location": current_location,
-            "message": "User current location retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user current location", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user current location"
-        )
-
-
-@router.get("/{user_id}/location/history")
-async def get_user_location_history(user_id: str):
-    """
-    Get user's location history
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user location history", user_id=user_id)
-        
-        lie_service = LIEService()
-        location_history = await lie_service.get_location_history(user_id)
-        
-        if not location_history:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Location history not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user location history", user_id=user_id, history_count=len(location_history))
-        return {
-            "success": True,
-            "user_id": user_id,
-            "location_history": location_history,
-            "count": len(location_history),
-            "message": "User location history retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user location history", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user location history"
-        )
-
-
-@router.get("/{user_id}/location/insights")
-async def get_user_location_insights(user_id: str):
-    """
-    Get location insights and patterns
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user location insights", user_id=user_id)
-        
-        lie_service = LIEService()
-        insights = await lie_service.get_location_insights(user_id)
-        
-        if not insights:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Location insights not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user location insights", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "location_insights": insights,
-            "message": "User location insights retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user location insights", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user location insights"
-        )
 
 
 @router.get("/{user_id}/interactions")
@@ -355,146 +117,7 @@ async def get_user_interaction_data(user_id: str):
         )
 
 
-@router.get("/{user_id}/interactions/raw")
-async def get_user_interaction_raw(user_id: str):
-    """
-    Get raw interaction data with all details
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting raw user interaction data", user_id=user_id)
-        
-        cis_service = CISService()
-        interaction_data = cis_service._generate_mock_interaction_data(user_id)
-        
-        logger.info("Retrieved raw user interaction data", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "interaction_data": interaction_data,
-            "message": "Raw user interaction data retrieved successfully"
-        }
-        
-    except Exception as e:
-        logger.error("Error getting raw user interaction data", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve raw user interaction data"
-        )
 
-
-@router.get("/{user_id}/interactions/recent")
-async def get_user_recent_interactions(user_id: str, limit: int = 10):
-    """
-    Get user's recent interactions
-    
-    - **user_id**: User identifier
-    - **limit**: Number of recent interactions to return (default: 10)
-    """
-    try:
-        logger.info("Getting user recent interactions", user_id=user_id, limit=limit)
-        
-        cis_service = CISService()
-        recent_interactions = await cis_service.get_recent_interactions(user_id, limit)
-        
-        if not recent_interactions:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Recent interactions not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user recent interactions", user_id=user_id, interaction_count=len(recent_interactions))
-        return {
-            "success": True,
-            "user_id": user_id,
-            "recent_interactions": recent_interactions,
-            "count": len(recent_interactions),
-            "message": "User recent interactions retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user recent interactions", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user recent interactions"
-        )
-
-
-@router.get("/{user_id}/engagement")
-async def get_user_engagement_score(user_id: str):
-    """
-    Get user's engagement score
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user engagement score", user_id=user_id)
-        
-        cis_service = CISService()
-        engagement_score = await cis_service.get_engagement_score(user_id)
-        
-        if engagement_score is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Engagement score not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user engagement score", user_id=user_id, engagement_score=engagement_score)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "engagement_score": engagement_score,
-            "message": "User engagement score retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user engagement score", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user engagement score"
-        )
-
-
-@router.get("/{user_id}/interactions/insights")
-async def get_user_interaction_insights(user_id: str):
-    """
-    Get interaction insights and patterns
-    
-    - **user_id**: User identifier
-    """
-    try:
-        logger.info("Getting user interaction insights", user_id=user_id)
-        
-        cis_service = CISService()
-        insights = await cis_service.get_interaction_insights(user_id)
-        
-        if not insights:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Interaction insights not found for user_id: {user_id}"
-            )
-        
-        logger.info("Retrieved user interaction insights", user_id=user_id)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "interaction_insights": insights,
-            "message": "User interaction insights retrieved successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error getting user interaction insights", user_id=user_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve user interaction insights"
-        )
 
 
 @router.post("/{user_id}/process-comprehensive")
@@ -629,3 +252,88 @@ async def get_processing_status(user_id: str, task_id: str):
             status_code=500,
             detail=f"Failed to get processing status for task {task_id}"
         )
+
+
+@router.post("/{user_id}/generate-recommendations")
+async def generate_recommendations_endpoint(user_id: str, data: dict = Body(...)):
+    """Generate recommendations using LLM service"""
+    try:
+        logger.info(f"Generating recommendations for user {user_id}")
+        
+        prompt = data.get("prompt", "")
+        response = llm_service.generate_recommendations(prompt, user_id)
+        
+        return APIResponse(
+            success=response.get("success", False),
+            data=response,
+            message="Recommendations generated successfully" if response.get("success") else "Failed to generate recommendations"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
+
+
+@router.get("/{user_id}/recommendations")
+async def get_user_recommendations(user_id: str):
+    """Get stored recommendations for a user"""
+    try:
+        logger.info(f"Retrieving recommendations for user {user_id}")
+        
+        recommendations = llm_service.get_recommendations_from_redis(user_id)
+        
+        if recommendations:
+            return APIResponse(
+                success=True,
+                data=recommendations,
+                message="Recommendations retrieved successfully"
+            )
+        else:
+            return APIResponse(
+                success=False,
+                data=None,
+                message="No recommendations found for this user"
+            )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving recommendations: {str(e)}")
+
+
+@router.delete("/{user_id}/recommendations")
+async def clear_user_recommendations(user_id: str):
+    """Clear stored recommendations for a user"""
+    try:
+        logger.info(f"Clearing recommendations for user {user_id}")
+        
+        llm_service.clear_recommendations(user_id)
+        
+        return APIResponse(
+            success=True,
+            data=None,
+            message="Recommendations cleared successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error clearing recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error clearing recommendations: {str(e)}")
+
+
+@router.post("/generate-recommendations")
+async def generate_recommendations_direct(data: dict = Body(...)):
+    """Generate recommendations without storing (for testing)"""
+    try:
+        logger.info("Generating recommendations without storing")
+        
+        prompt = data.get("prompt", "")
+        response = llm_service.generate_recommendations(prompt)
+        
+        return APIResponse(
+            success=response.get("success", False),
+            data=response,
+            message="Recommendations generated successfully" if response.get("success") else "Failed to generate recommendations"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")

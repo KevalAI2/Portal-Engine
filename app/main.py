@@ -12,7 +12,7 @@ import os
 
 from core.config import settings
 from core.logging import get_logger
-from api.routers import recommendations, notifications, health, users
+from api.routers import health, users
 
 # Configure logging
 logger = get_logger("main")
@@ -128,16 +128,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Include routers
-app.include_router(
-    recommendations.router,
-    prefix=settings.api_prefix
-)
-
-app.include_router(
-    notifications.router,
-    prefix=settings.api_prefix
-)
-
 app.include_router(
     health.router,
     prefix=settings.api_prefix

@@ -1,6 +1,6 @@
 """
 API routers for Portal Engine
 """
-from . import recommendations, notifications, health, users
+from . import health, users
 
-__all__ = ["recommendations", "notifications", "health", "users"]
+__all__ = ["health", "users"]

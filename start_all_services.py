@@ -121,9 +121,12 @@ def start_celery_worker():
     """Start Celery worker with enhanced logging"""
     logger.info("Starting Celery worker...")
     
+    # Get the virtual environment Python executable
+    venv_python = os.path.join(os.path.dirname(__file__), "venv", "bin", "python")
+    
     concurrency = settings.celery_worker_concurrency
     cmd = [
-        "celery", "-A", "workers.celery_app", "worker",
+        venv_python, "-m", "celery", "-A", "workers.celery_app", "worker",
         "--loglevel=info",
         f"--concurrency={concurrency}",
         "--queues=user_processing",
@@ -167,8 +170,11 @@ def start_fastapi():
     """Start FastAPI application with minimal logging"""
     logger.info("Starting FastAPI application...")
     
+    # Get the virtual environment Python executable
+    venv_python = os.path.join(os.path.dirname(__file__), "venv", "bin", "python")
+    
     cmd = [
-        sys.executable, "-m", "uvicorn", "main:app",
+        venv_python, "-m", "uvicorn", "main:app",
         "--host", settings.api_host,
         "--port", str(settings.api_port),
         "--reload" if settings.debug else "",
@@ -179,14 +185,26 @@ def start_fastapi():
     cmd = [arg for arg in cmd if arg]
     
     try:
-        print("🌐 Starting FastAPI (logs minimized for worker visibility)...")
+        print("🌐 Starting FastAPI...")
         process = subprocess.Popen(
             cmd,
             cwd=os.path.join(os.path.dirname(__file__), "app"),
-            stdout=subprocess.DEVNULL,  # Suppress FastAPI logs
-            stderr=subprocess.DEVNULL,  # Suppress FastAPI logs
+            stdout=subprocess.PIPE,  # Capture stdout to see errors
+            stderr=subprocess.PIPE,  # Capture stderr to see errors
             universal_newlines=True
         )
+        
+        # Wait a moment to see if it starts successfully
+        time.sleep(2)
+        
+        # Check if process is still running
+        if process.poll() is not None:
+            # Process died, get the error output
+            stdout, stderr = process.communicate()
+            logger.error(f"FastAPI failed to start!")
+            logger.error(f"STDOUT: {stdout}")
+            logger.error(f"STDERR: {stderr}")
+            return False
         
         processes["fastapi"] = process
         logger.info(f"FastAPI started with PID: {process.pid}")
@@ -202,8 +220,11 @@ def start_celery_beat():
     """Start Celery beat scheduler with minimal logging"""
     logger.info("Starting Celery beat...")
     
+    # Get the virtual environment Python executable
+    venv_python = os.path.join(os.path.dirname(__file__), "venv", "bin", "python")
+    
     cmd = [
-        "celery", "-A", "workers.celery_app", "beat",
+        venv_python, "-m", "celery", "-A", "workers.celery_app", "beat",
         "--loglevel=warning",  # Reduce beat log noise
         "--scheduler=celery.beat.PersistentScheduler"
     ]

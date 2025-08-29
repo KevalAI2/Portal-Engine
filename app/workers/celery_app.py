@@ -50,15 +50,15 @@ celery_app.conf.update(
 # Configure logging
 logger = get_logger("celery")
 
-@celery_app.on_after_configure.connect
-def setup_periodic_tasks(sender, **kwargs):
-    """Setup periodic tasks"""
-    # Import here to avoid circular import
-    from workers.tasks import get_users
-    
-    interval = settings.task_interval_seconds
-    sender.add_periodic_task(
-        interval,  # seconds
-        get_users.s(3, 1),  # pass args here (count=3, delay=1)
-        name=f"generate-users-every-{interval}-seconds"
-    )
+# @celery_app.on_after_configure.connect
+# def setup_periodic_tasks(sender, **kwargs):
+#     """Setup periodic tasks"""
+#     # Import here to avoid circular import
+#     from workers.tasks import get_users
+#     
+#     interval = settings.task_interval_seconds
+#     sender.add_periodic_task(
+#         interval,  # seconds
+#         get_users.s(3, 1),  # pass args here (count=3, delay=1)
+#         name=f"generate-users-every-{interval}-seconds"
+#     )

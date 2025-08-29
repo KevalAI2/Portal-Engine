@@ -3,16 +3,15 @@ Celery tasks for recommendation processing
 """
 import asyncio
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from workers.celery_app import celery_app
 from core.logging import get_logger
 from core.config import settings
-from core.constants import RecommendationType, TaskStatus
+from core.constants import RecommendationType
 from services.user_profile import UserProfileService
 from services.lie_service import LIEService
 from services.cis_service import CISService
-from services.prefetch_service import PrefetchService
-from services.cache_service import CacheService
+from services.llm_service import llm_service
 from utils.prompt_builder import PromptBuilder
 import time
 
@@ -384,8 +383,8 @@ def get_users(self, count: int = 5, delay: int = 1) -> Dict[str, Any]:
 
         # Send into RabbitMQ → Each user gets a separate worker
         # Using apply_async with routing_key based on user ID for worker isolation
-        process_user.apply_async(
-            args=[user],
+        process_user_comprehensive.apply_async(
+            args=[str(user['id'])],  # Pass user_id as string
             queue="user_processing",
             routing_key=f"user_processing_{i % settings.celery_worker_concurrency}",  # Distribute across workers
             priority=i,  # Higher priority for newer users
@@ -465,18 +464,6 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
             
             print(f"   ✅ Engagement Score: {interaction_data.engagement_score:.2f}")
             
-            # Get additional insights
-            print(f"   🔄 Fetching additional insights...")
-            
-            # Get location insights
-            location_insights = loop.run_until_complete(lie_service.get_location_insights(user_id))
-            
-            # Get interaction insights
-            interaction_insights = loop.run_until_complete(cis_service.get_interaction_insights(user_id))
-            
-            # Get engagement metrics
-            engagement_metrics = loop.run_until_complete(cis_service.get_engagement_metrics(user_id))
-            
             print(f"   ✅ All data fetched successfully!\n")
             
             # Combine all data into comprehensive user profile
@@ -508,16 +495,13 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
                     "home_location": location_data.home_location,
                     "work_location": location_data.work_location,
                     "travel_history": location_data.travel_history[:5],  # Top 5 recent trips
-                    "location_preferences": location_data.location_preferences,
-                    "location_insights": location_insights or {}
+                    "location_preferences": location_data.location_preferences
                 },
                 "interaction_analytics": {
                     "engagement_score": interaction_data.engagement_score,
                     "recent_interactions_count": len(interaction_data.recent_interactions),
                     "interaction_history_count": len(interaction_data.interaction_history),
-                    "interaction_preferences": interaction_data.preferences,
-                    "interaction_insights": interaction_insights or {},
-                    "engagement_metrics": engagement_metrics or {}
+                    "interaction_preferences": interaction_data.preferences
                 },
                 "combined_insights": {
                     "user_persona": f"{user_profile.name} is a {user_profile.age}-year-old {user_profile.preferences.get('Demographics', {}).get('example_values', [{}])[0].get('value', 'person')} living in {location_data.current_location}",
@@ -716,6 +700,19 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
             print(f"   ✅ Prompt generated successfully!")
             print(f"   📝 Prompt length: {len(generated_prompt)} characters")
             
+            # Generate recommendations using LLM service
+            print(f"🤖 GENERATING RECOMMENDATIONS:")
+            print(f"   🔄 Sending prompt to LLM service...")
+            
+            llm_response = llm_service.generate_recommendations(generated_prompt, user_id)
+            
+            if llm_response.get("success"):
+                print(f"   ✅ Recommendations generated successfully!")
+                print(f"   📊 Total recommendations: {llm_response['metadata']['total_recommendations']}")
+                print(f"   🎬 Categories: {', '.join(llm_response['metadata']['categories'])}")
+            else:
+                print(f"   ❌ Failed to generate recommendations: {llm_response.get('error', 'Unknown error')}")
+            
             # Create comprehensive result
             result_data = {
                 "user_id": user_id,
@@ -741,16 +738,19 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
                     "recommendation_type": recommendation_type,
                     "max_results": max_results,
                     "generated_at": time.time()
-                }
+                },
+                "recommendations": llm_response if llm_response.get("success") else None
             }
             
-            print(f"📈 PROMPT GENERATION COMPLETE:")
+            print(f"📈 COMPREHENSIVE PROCESSING COMPLETE:")
             print(f"   👤 User: {result_data['user_summary']['name']}")
             print(f"   📍 Location: {result_data['user_summary']['current_location']}")
             print(f"   🎯 Engagement: {result_data['user_summary']['engagement_score']:.2f}")
             print(f"   🤖 Prompt Generated: {len(generated_prompt)} chars")
+            if llm_response.get("success"):
+                print(f"   🎬 Recommendations: {llm_response['metadata']['total_recommendations']} items")
             print(f"   🔧 Worker: {worker_id}")
-            print(f"   ✅ Status: Successfully generated personalized prompt\n")
+            print(f"   ✅ Status: Successfully processed user and generated recommendations\n")
             
             logger.info("User prompt generation completed successfully", 
                        user_id=user_id, 
@@ -764,7 +764,8 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
                 "user_id": user_id,
                 "result_data": result_data,
                 "generated_prompt": generated_prompt,
-                "message": f"Personalized prompt generated successfully for {user_profile.name}"
+                "recommendations": llm_response if llm_response.get("success") else None,
+                "message": f"Comprehensive processing completed successfully for {user_profile.name}"
             }
             
         finally:
