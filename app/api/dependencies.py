@@ -5,6 +5,7 @@ from typing import Generator
 from services.user_profile import UserProfileService
 from services.lie_service import LIEService
 from services.cis_service import CISService
+from services.results_service import ResultsService
 from workers.celery_app import celery_app
 
 
@@ -21,6 +22,11 @@ def get_lie_service() -> LIEService:
 def get_cis_service() -> CISService:
     """Get CIS service instance"""
     return CISService()
+
+
+def get_results_service() -> ResultsService:
+    """Get results service instance"""
+    return ResultsService()
 
 
 def get_celery_app():

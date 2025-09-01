@@ -9,6 +9,7 @@ from services.user_profile import UserProfileService
 from services.lie_service import LIEService
 from services.cis_service import CISService
 from services.llm_service import llm_service
+from services.results_service import results_service
 from workers.tasks import process_user_comprehensive
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -337,3 +338,49 @@ async def generate_recommendations_direct(data: dict = Body(...)):
     except Exception as e:
         logger.error(f"Error generating recommendations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
+
+
+@router.get("/{user_id}/results")
+async def get_ranked_results(
+    user_id: str,
+    category: Optional[str] = Query(None, description="Filter by category (movies, music, places, events)"),
+    limit: Optional[int] = Query(5, description="Limit results per category"),
+    min_score: Optional[float] = Query(0.0, description="Minimum ranking score")
+):
+    """
+    Get ranked and filtered final results for a user
+    
+    - **user_id**: User identifier
+    - **category**: Optional category filter
+    - **limit**: Maximum results per category (default: 5)
+    - **min_score**: Minimum ranking score (default: 0.0)
+    """
+    try:
+        logger.info(f"Getting ranked results for user {user_id}")
+        
+        # Prepare filters
+        filters = {
+            "category": category,
+            "limit": limit,
+            "min_score": min_score
+        }
+        
+        # Get ranked results
+        results = results_service.get_ranked_results(user_id, filters)
+        
+        if results.get("success"):
+            return APIResponse(
+                success=True,
+                data=results,
+                message="Ranked results retrieved successfully"
+            )
+        else:
+            return APIResponse(
+                success=False,
+                data=None,
+                message=results.get("error", "No results found")
+            )
+        
+    except Exception as e:
+        logger.error(f"Error getting ranked results: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting ranked results: {str(e)}")
