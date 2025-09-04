@@ -28,7 +28,6 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
         user_service = UserProfileService()
         lie_service = LIEService()
         cis_service = CISService()
-        cache_service = CacheService()
         
         # Run async operations
         loop = asyncio.new_event_loop()
@@ -47,9 +46,6 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
                 "interaction_data": interaction_data.model_dump() if interaction_data else None,
                 "fetched_at": asyncio.get_event_loop().time()
             }
-            
-            # Cache the user data
-            loop.run_until_complete(cache_service.store_user_data(user_id, user_data))
             
             logger.info("User data fetch completed", user_id=user_id, task_id=self.request.id)
             
@@ -89,24 +85,36 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
         location_data = user_data.get("location_data")
         interaction_data = user_data.get("interaction_data")
         
-        if not all([user_profile_data, location_data, interaction_data]):
-            raise ValueError("Incomplete user data for prompt building")
+        # If any component is missing, build a fallback prompt that can still yield useful recs
+        # rather than failing the pipeline.
+        missing_any = not any([user_profile_data, location_data, interaction_data])
         
-        # Convert to Pydantic models
         from models.schemas import UserProfile, LocationData, InteractionData
-        
-        user_profile = UserProfile(**user_profile_data)
-        location = LocationData(**location_data)
-        interaction = InteractionData(**interaction_data)
-        
-        # Build the prompt
-        prompt = prompt_builder.build_recommendation_prompt(
-            user_profile=user_profile,
-            location_data=location,
-            interaction_data=interaction,
-            recommendation_type=RecommendationType(recommendation_type),
-            max_results=10
-        )
+        if missing_any:
+            # Use best-available partial objects to inform fallback
+            user_profile = UserProfile(**user_profile_data) if user_profile_data else None
+            location = LocationData(**location_data) if location_data else None
+            interaction = InteractionData(**interaction_data) if interaction_data else None
+            prompt = prompt_builder.build_fallback_prompt(
+                user_profile=user_profile,
+                location_data=location,
+                interaction_data=interaction,
+                recommendation_type=RecommendationType(recommendation_type),
+                max_results=10,
+            )
+        else:
+            # Convert to Pydantic models
+            user_profile = UserProfile(**user_profile_data)
+            location = LocationData(**location_data)
+            interaction = InteractionData(**interaction_data)
+            # Build the standard prompt
+            prompt = prompt_builder.build_recommendation_prompt(
+                user_profile=user_profile,
+                location_data=location,
+                interaction_data=interaction,
+                recommendation_type=RecommendationType(recommendation_type),
+                max_results=10
+            )
         
         logger.info("Prompt built successfully", recommendation_type=recommendation_type, task_id=self.request.id)
         
@@ -132,9 +140,6 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
     try:
         logger.info("Calling LLM service", recommendation_type=recommendation_type, task_id=self.request.id)
         
-        # Create prefetch service
-        prefetch_service = PrefetchService()
-        
         # Run async operation
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -142,7 +147,7 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
         try:
             # Generate recommendations
             recommendations = loop.run_until_complete(
-                prefetch_service.generate_recommendations(
+                llm_service.generate_recommendations(
                     prompt=prompt,
                     user_context=user_context,
                     recommendation_type=recommendation_type,
@@ -180,9 +185,6 @@ def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], rec
     try:
         logger.info("Caching results", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
         
-        # Create cache service
-        cache_service = CacheService()
-        
         # Run async operation
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -190,7 +192,7 @@ def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], rec
         try:
             # Store recommendations in cache
             success = loop.run_until_complete(
-                cache_service.store_recommendations(
+                llm_service.store_recommendations(
                     user_id=user_id,
                     recommendation_type=recommendation_type,
                     recommendations=recommendations
@@ -230,13 +232,12 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
         
         # Check cache first (unless force refresh)
         if not force_refresh:
-            cache_service = CacheService()
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
             try:
                 cached_recommendations = loop.run_until_complete(
-                    cache_service.get_recommendations(user_id, recommendation_type)
+                    llm_service.get_recommendations(user_id, recommendation_type)
                 )
                 
                 if cached_recommendations:

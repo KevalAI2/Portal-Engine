@@ -46,10 +46,10 @@ class ResultsService:
             prompt = raw_data.get("prompt", "")
             
             # Apply ranking algorithm
-            ranked_results = self._rank_recommendations(recommendations, prompt, user_id)
+            # ranked_results = self._rank_recommendations(recommendations, prompt, user_id)
             
             # Apply deduplication
-            deduplicated_results = self._deduplicate_results(ranked_results)
+            deduplicated_results = self._deduplicate_results(recommendations)
             
             # Apply filters
             filtered_results = self._apply_filters(deduplicated_results, filters or {})
@@ -65,7 +65,7 @@ class ResultsService:
                 "applied_filters": filters or {},
                 "processing_info": {
                     "raw_count": sum(len(cat) for cat in recommendations.values()),
-                    "ranked_count": sum(len(cat) for cat in ranked_results.values()),
+                    # "ranked_count": sum(len(cat) for cat in ranked_results.values()),
                     "final_count": sum(len(cat) for cat in filtered_results.values())
                 }
             }
@@ -194,35 +194,35 @@ class ResultsService:
         import time
         import random
         
-        # Dummy recommendations with ranking scores (matching LLM service data)
+        # Dummy recommendations with ranking scores (Barcelona-themed)
         dummy_recommendations = {
             "movies": [
-                {"title": "3 Idiots", "genre": "Comedy-Drama", "description": "A heartwarming story about friendship and education", "ranking_score": 8.5},
-                {"title": "Lagaan", "genre": "Sports-Drama", "description": "Epic cricket match against British rule", "ranking_score": 8.2},
-                {"title": "The Shawshank Redemption", "genre": "Drama", "description": "Hope and friendship in prison", "ranking_score": 7.8},
-                {"title": "Dangal", "genre": "Biographical-Sports", "description": "True story of wrestling champions", "ranking_score": 7.5},
-                {"title": "Inception", "genre": "Sci-Fi-Thriller", "description": "Dreams within dreams", "ranking_score": 7.2}
+                {"title": "Vicky Cristina Barcelona", "genre": "Romance-Drama", "description": "A romantic story set in Barcelona", "ranking_score": 8.5},
+                {"title": "L'Auberge Espagnole", "genre": "Comedy-Drama", "description": "Students living in Barcelona", "ranking_score": 8.2},
+                {"title": "All About My Mother", "genre": "Drama", "description": "Almodóvar's masterpiece set in Barcelona", "ranking_score": 7.8},
+                {"title": "Barcelona", "genre": "Comedy-Drama", "description": "Americans in 1980s Barcelona", "ranking_score": 7.5},
+                {"title": "Biutiful", "genre": "Drama", "description": "Gritty Barcelona drama", "ranking_score": 7.2}
             ],
             "music": [
-                {"title": "Tum Hi Ho", "artist": "Arijit Singh", "description": "Romantic Bollywood melody", "ranking_score": 8.0},
-                {"title": "Blinding Lights", "artist": "The Weeknd", "description": "80s-inspired pop hit", "ranking_score": 7.8},
-                {"title": "Kesariya", "artist": "Arijit Singh", "description": "Modern romantic song", "ranking_score": 7.5},
-                {"title": "Shape of You", "artist": "Ed Sheeran", "description": "Catchy pop love song", "ranking_score": 7.2},
-                {"title": "Dance Monkey", "artist": "Tones and I", "description": "Viral pop sensation", "ranking_score": 6.9}
+                {"title": "Barcelona", "artist": "Freddie Mercury & Montserrat Caballé", "description": "Olympic anthem for Barcelona", "ranking_score": 8.0},
+                {"title": "Mediterráneo", "artist": "Joan Manuel Serrat", "description": "Classic Catalan folk song", "ranking_score": 7.8},
+                {"title": "La Flaca", "artist": "Jarabe de Palo", "description": "Barcelona rock anthem", "ranking_score": 7.5},
+                {"title": "Rumba Catalana", "artist": "Gipsy Kings", "description": "Traditional Barcelona rumba", "ranking_score": 7.2},
+                {"title": "Gaudí", "artist": "Manu Chao", "description": "Tribute to Barcelona's architect", "ranking_score": 6.9}
             ],
             "places": [
-                {"name": "Taj Mahal", "location": "Agra", "description": "Iconic white marble mausoleum", "ranking_score": 9.0},
-                {"name": "Eiffel Tower", "location": "Paris", "description": "Iconic iron lattice tower", "ranking_score": 8.5},
-                {"name": "Golden Temple", "location": "Amritsar", "description": "Sacred Sikh gurdwara", "ranking_score": 8.2},
-                {"name": "Big Ben", "location": "London", "description": "Famous clock tower", "ranking_score": 7.8},
-                {"name": "Gateway of India", "location": "Mumbai", "description": "Historic monument", "ranking_score": 7.5}
+                {"name": "Sagrada Família", "location": "Barcelona", "description": "Gaudí's unfinished masterpiece", "ranking_score": 9.0},
+                {"name": "Park Güell", "location": "Barcelona", "description": "Colorful mosaic park by Gaudí", "ranking_score": 8.5},
+                {"name": "Las Ramblas", "location": "Barcelona", "description": "Famous pedestrian street", "ranking_score": 8.2},
+                {"name": "Casa Batlló", "location": "Barcelona", "description": "Modernist house by Gaudí", "ranking_score": 7.8},
+                {"name": "Barceloneta Beach", "location": "Barcelona", "description": "Popular city beach", "ranking_score": 7.5}
             ],
             "events": [
-                {"name": "Diwali Festival", "location": "Pan India", "description": "Festival of lights", "ranking_score": 8.8},
-                {"name": "Coachella", "location": "California", "description": "Music and arts festival", "ranking_score": 8.3},
-                {"name": "Holi Festival", "location": "Pan India", "description": "Festival of colors", "ranking_score": 8.0},
-                {"name": "Oktoberfest", "location": "Munich", "description": "Beer festival", "ranking_score": 7.7},
-                {"name": "Ganesh Chaturthi", "location": "Mumbai", "description": "Elephant god celebration", "ranking_score": 7.4}
+                {"name": "La Mercè Festival", "location": "Barcelona", "description": "Barcelona's biggest street festival", "ranking_score": 8.8},
+                {"name": "Festa Major de Gràcia", "location": "Barcelona", "description": "Neighborhood celebration with decorated streets", "ranking_score": 8.3},
+                {"name": "Primavera Sound", "location": "Barcelona", "description": "International music festival", "ranking_score": 8.0},
+                {"name": "Sant Jordi Day", "location": "Barcelona", "description": "Day of books and roses", "ranking_score": 7.7},
+                {"name": "Nit Blanca", "location": "Barcelona", "description": "White night cultural event", "ranking_score": 7.4}
             ]
         }
         
