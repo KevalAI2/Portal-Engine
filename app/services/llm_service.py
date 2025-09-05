@@ -712,8 +712,21 @@ class LLMService:
                 json.dumps(data, default=str)  # Handle datetime serialization
             )
             logger.info(f"Stored recommendations in Redis for user {user_id}")
+            # Publish WebSocket notification via Redis Pub/Sub
+            try:
+                notify_payload = {
+                    "type": "notification",
+                    "user_id": str(user_id),
+                    "message": {"content": "Your new recommendations are ready!"}
+                }
+                pub_client = redis.Redis(host=settings.redis_host, port=6379, db=0, decode_responses=True)
+                pub_client.publish("notifications:user", json.dumps(notify_payload))
+                logger.info(f"Published notification for user {user_id} on notifications:user")
+            except Exception as pub_err:
+                logger.error(f"Failed to publish notification for user {user_id}: {pub_err}")
         except Exception as e:
             logger.error(f"Error storing in Redis: {str(e)}")
+            print('failed to store in redis')
     
     def get_recommendations_from_redis(self, user_id: str) -> Dict[str, Any]:
         """Retrieve recommendations from Redis"""
