@@ -5,16 +5,18 @@ import random
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from services.base import BaseService
-from models.schemas import UserProfile
-from core.config import settings
-from core.logging import get_logger
+from app.services.base import BaseService
+from app.models.schemas import UserProfile
+from app.core.config import settings
+from app.core.logging import get_logger
 
 
 class UserProfileService(BaseService):
     """User Profile Service with schema-based mock data generation"""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
+        """Initializes the service with a timeout and logger."""
+        self.timeout = timeout
         super().__init__(settings.user_profile_service_url)
         self.logger = get_logger("user_profile_service")
         

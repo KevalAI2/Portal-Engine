@@ -2,8 +2,8 @@
 Celery application configuration
 """
 from celery import Celery
-from core.config import settings
-from core.logging import get_logger
+from app.core.config import settings
+from app.core.logging import get_logger
 
 # Configure Celery
 celery_app = Celery(

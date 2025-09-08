@@ -3,9 +3,9 @@ Enhanced Prompt Builder utility for constructing ranking-based natural language 
 with complete JSON structure for all categories
 """
 from typing import Dict, Any, List, Optional
-from core.logging import get_logger
+from app.core.logging import get_logger
 from models.schemas import UserProfile, LocationData, InteractionData
-from core.constants import RecommendationType
+from app.core.constants import RecommendationType
 import time
 
 class PromptBuilder:

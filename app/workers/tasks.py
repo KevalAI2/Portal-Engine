@@ -4,15 +4,15 @@ Celery tasks for recommendation processing
 import asyncio
 import os
 from typing import Dict, Any, List
-from workers.celery_app import celery_app
-from core.logging import get_logger
-from core.config import settings
-from core.constants import RecommendationType
-from services.user_profile import UserProfileService
-from services.lie_service import LIEService
-from services.cis_service import CISService
-from services.llm_service import llm_service
-from utils.prompt_builder import PromptBuilder
+from app.workers.celery_app import celery_app
+from app.core.logging import get_logger
+from app.core.config import settings
+from app.core.constants import RecommendationType
+from app.services.user_profile import UserProfileService
+from app.services.lie_service import LIEService
+from app.services.cis_service import CISService
+from app.services.llm_service import llm_service
+from app.utils.prompt_builder import PromptBuilder
 import time
 
 logger = get_logger("celery_tasks")

@@ -4,16 +4,24 @@ Configuration settings for Portal Engine
 from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
+import sys
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
-    
-    # Application Settings
+    app_name: str = "GenAIforTravel"
+    debug: bool = True
+    database_url: str = "sqlite:///./test.db"
+
+    # ✅ Pydantic v2 way (no inner Config class)
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+
+    # Application
     app_name: str = Field(default="Portal Engine", env="APP_NAME")
     app_version: str = Field(default="1.0.0", env="APP_VERSION")
+    environment: str = Field(default="production", env=["APP_ENV", "ENVIRONMENT"])
     debug: bool = Field(default=False, env="DEBUG")
-    environment: str = Field(default="production", env="ENVIRONMENT")
     
     # API Settings
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
@@ -78,10 +86,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     log_format: str = Field(default="json", env="LOG_FORMAT")
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
 
 # Global settings instance
 settings = Settings()
+if "pytest" in sys.modules:
+    settings.environment = "test"

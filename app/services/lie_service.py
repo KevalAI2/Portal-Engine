@@ -4,16 +4,17 @@ LIE (Location Intelligence Engine) Service with Mock Data Generation
 import random
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from services.base import BaseService
-from models.schemas import LocationData
-from core.config import settings
-from core.logging import get_logger
+from app.services.base import BaseService
+from app.models.schemas import LocationData
+from app.core.config import settings
+from app.core.logging import get_logger
 
 
 class LIEService(BaseService):
     """LIE (Location Intelligence Engine) Service with comprehensive mock location data"""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
         super().__init__(settings.lie_service_url)
         self.logger = get_logger("lie_service")
         

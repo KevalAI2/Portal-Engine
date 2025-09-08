@@ -3,9 +3,9 @@ Results Service for ranking, filtering and deduplicating recommendations
 """
 import json
 from typing import Dict, Any, List, Tuple
-from core.logging import get_logger
+from app.core.logging import get_logger
 import redis
-from core.config import settings
+from app.core.config import settings
 
 logger = get_logger("results_service")
 
@@ -13,7 +13,8 @@ logger = get_logger("results_service")
 class ResultsService:
     """Service to rank, filter and deduplicate recommendations"""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
         self.redis_client = redis.Redis(
             host=settings.redis_host,
             port=6379,

@@ -3,13 +3,13 @@ Health check API router
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends
-from core.logging import get_logger
-from core.config import settings
-from models.schemas import HealthCheckResponse
-from services.user_profile import UserProfileService
-from services.lie_service import LIEService
-from services.cis_service import CISService
-from api.dependencies import (
+from app.core.logging import get_logger
+from app.core.config import settings
+from app.models.schemas import HealthCheckResponse
+from app.services.user_profile import UserProfileService
+from app.services.lie_service import LIEService
+from app.services.cis_service import CISService
+from app.api.dependencies import (
     get_user_profile_service,
     get_lie_service,
     get_cis_service
@@ -54,10 +54,11 @@ async def health_check(
             services_status["cis_service"] = "unavailable"
         
         # Determine overall status
-        overall_status = "healthy"
-        if any(status == "unhealthy" for status in services_status.values()):
+        if all(status == "healthy" for status in services_status.values()):
+            overall_status = "healthy"
+        elif any(status == "healthy" for status in services_status.values()):
             overall_status = "degraded"
-        if all(status == "unavailable" for status in services_status.values() if "service" in status):
+        else:
             overall_status = "unhealthy"
         
         response = HealthCheckResponse(

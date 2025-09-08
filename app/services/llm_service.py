@@ -5,8 +5,8 @@ import json
 import time
 import random
 from typing import Dict, Any, List
-from core.logging import get_logger
-from core.config import settings
+from app.core.logging import get_logger
+from app.core.config import settings
 import redis
 
 logger = get_logger("llm_service")
@@ -15,7 +15,8 @@ logger = get_logger("llm_service")
 class LLMService:
     """Service to generate recommendations from prompts and store in Redis"""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
         self.redis_client = redis.Redis(
             host=settings.redis_host,
             port=6379,

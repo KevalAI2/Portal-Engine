@@ -4,16 +4,17 @@ CIS (Content Interaction Service) with Enhanced Mock Data Generation
 import random
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from services.base import BaseService
-from models.schemas import InteractionData
-from core.config import settings
-from core.logging import get_logger
+from app.services.base import BaseService
+from app.models.schemas import InteractionData
+from app.core.config import settings
+from app.core.logging import get_logger
 
 
 class CISService(BaseService):
     """CIS (Content Interaction Service) with comprehensive mock interaction data"""
     
-    def __init__(self):
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
         super().__init__(settings.cis_service_url)
         self.logger = get_logger("cis_service")
         
