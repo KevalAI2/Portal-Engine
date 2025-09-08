@@ -111,19 +111,6 @@ DELETE /api/v1/recommendations/{type}?user_id={user_id}
 GET /api/v1/recommendations/status/{task_id}
 ```
 
-#### Notifications
-
-```http
-# Get user notifications
-GET /api/v1/notifications/?user_id={user_id}&limit=10
-
-# Mark notification as read
-POST /api/v1/notifications/{notification_id}/read?user_id={user_id}
-
-# Delete notification
-DELETE /api/v1/notifications/{notification_id}?user_id={user_id}
-```
-
 #### Health Checks
 
 ```http
@@ -171,7 +158,93 @@ PREFETCH_SERVICE_URL=http://prefetch-service:8000
 
 ## 🧪 Testing
 
-Run the test suite:
+The project includes a comprehensive test suite with 100% unit test coverage for all components. Tests are organized by category and include unit tests, integration tests, and performance tests.
+
+### Quick Start
+
+Run all tests with a single command:
+
+```bash
+# Run all tests
+python run_all_tests.py
+
+# Run with coverage reporting
+python run_all_tests.py --coverage
+
+# Run with verbose output
+python run_all_tests.py --verbose
+
+# Run tests in parallel for faster execution
+python run_all_tests.py --parallel
+```
+
+### Test Categories
+
+#### Unit Tests
+Test individual components in isolation with mocked dependencies:
+
+```bash
+# Run only unit tests
+python run_all_tests.py --unit
+
+# Run unit tests with coverage
+python run_all_tests.py --unit --coverage
+```
+
+#### Integration Tests
+Test component interactions and external service integrations:
+
+```bash
+# Run only integration tests
+python run_all_tests.py --integration
+
+# Run integration tests with coverage
+python run_all_tests.py --integration --coverage
+```
+
+#### Performance Tests
+Test performance characteristics and load handling:
+
+```bash
+# Run only performance tests
+python run_all_tests.py --performance
+
+# Run performance tests with coverage
+python run_all_tests.py --performance --coverage
+```
+
+### Test Runner Options
+
+The `run_all_tests.py` script provides comprehensive testing capabilities:
+
+```bash
+# Basic usage
+python run_all_tests.py                    # Run all tests
+python run_all_tests.py --unit            # Run only unit tests
+python run_all_tests.py --integration     # Run only integration tests
+python run_all_tests.py --performance     # Run only performance tests
+
+# Coverage and reporting
+python run_all_tests.py --coverage        # Run with coverage reporting
+python run_all_tests.py --report          # Generate comprehensive test report
+
+# Output and performance
+python run_all_tests.py --verbose         # Verbose output
+python run_all_tests.py --parallel        # Run tests in parallel
+
+# Specific tests
+python run_all_tests.py --file test_main_app.py                    # Run specific test file
+python run_all_tests.py --file test_main_app.py --function test_app_creation  # Run specific test function
+
+# Utility commands
+python run_all_tests.py --list            # List all available tests
+python run_all_tests.py --check-deps      # Check if dependencies are installed
+python run_all_tests.py --install-deps    # Install required dependencies
+```
+
+### Manual Testing Commands
+
+If you prefer to use pytest directly:
 
 ```bash
 # Run all tests
@@ -181,11 +254,157 @@ pytest
 pytest --cov=app --cov-report=html
 
 # Run specific test file
-pytest tests/test_recommendations_api.py
+pytest tests/test_main_app.py
+
+# Run specific test function
+pytest tests/test_main_app.py::TestMainApp::test_app_creation
 
 # Run with verbose output
 pytest -v
+
+# Run tests in parallel
+pytest -n auto
+
+# Run tests with specific markers
+pytest -m unit          # Run only unit tests
+pytest -m integration   # Run only integration tests
+pytest -m performance   # Run only performance tests
+
+# Run tests with coverage and generate reports
+pytest --cov=app --cov-report=html --cov-report=term-missing --cov-report=xml
 ```
+
+### Test Coverage
+
+The test suite provides comprehensive coverage for:
+
+- **Core Components**: Configuration, constants, logging
+- **Services**: User profile, LIE, CIS, LLM, and results services
+- **API Layer**: All endpoints, dependencies, and routers
+- **Workers**: Celery tasks and configuration
+- **Models**: All Pydantic schemas and data models
+- **Utilities**: Prompt builder and helper functions
+- **Main Application**: FastAPI app, middleware, and error handling
+
+### Test Structure
+
+```
+tests/
+├── conftest.py                    # Pytest configuration and fixtures
+├── test_main_app.py              # Main FastAPI application tests
+├── test_health_router.py          # Health check endpoint tests
+├── test_users_router.py           # Users API endpoint tests
+├── test_core_config.py            # Configuration tests
+├── test_core_constants.py         # Constants tests
+├── test_core_logging.py           # Logging tests
+├── test_services_base.py          # Base service tests
+├── test_services_user_profile.py  # User profile service tests
+├── test_services_lie_service.py   # LIE service tests
+├── test_services_cis_service.py   # CIS service tests
+├── test_services_llm_service.py   # LLM service tests
+├── test_services_results_service.py # Results service tests
+├── test_api_dependencies.py       # API dependencies tests
+├── test_workers_tasks.py          # Celery workers tests
+├── test_workers_celery_app.py     # Celery app configuration tests
+├── test_models_schemas.py         # Data models tests
+├── test_utils_prompt_builder.py   # Prompt builder utility tests
+└── README.md                      # Test documentation
+```
+
+### Test Fixtures
+
+The test suite includes comprehensive fixtures for:
+
+- **Mock Services**: All external services are mocked for unit tests
+- **Test Data**: Sample user profiles, location data, and interaction data
+- **Test Client**: FastAPI test client for API testing
+- **Mock Responses**: Predefined responses for external service calls
+
+### Running Tests in Different Environments
+
+#### Development Environment
+```bash
+# Install dependencies
+python run_all_tests.py --install-deps
+
+# Run all tests
+python run_all_tests.py --verbose
+```
+
+#### CI/CD Environment
+```bash
+# Run tests with coverage and generate reports
+python run_all_tests.py --coverage --report
+
+# Run tests in parallel for faster execution
+python run_all_tests.py --parallel --coverage
+```
+
+#### Production Environment
+```bash
+# Run tests to verify deployment
+python run_all_tests.py --unit --coverage
+```
+
+### Test Reports
+
+The test runner generates comprehensive reports:
+
+- **HTML Coverage Report**: `htmlcov/index.html`
+- **Terminal Coverage Report**: Coverage summary in terminal
+- **XML Coverage Report**: `coverage.xml` for CI/CD integration
+- **JUnit XML Report**: `test-results.xml` for test result tracking
+- **HTML Test Report**: `test-report.html` for detailed test results
+
+### Troubleshooting Tests
+
+#### Common Issues
+
+1. **Missing Dependencies**
+   ```bash
+   python run_all_tests.py --install-deps
+   ```
+
+2. **Test Failures**
+   ```bash
+   # Run with verbose output to see detailed error messages
+   python run_all_tests.py --verbose
+   
+   # Run specific failing test
+   python run_all_tests.py --file test_main_app.py --function test_app_creation
+   ```
+
+3. **Coverage Issues**
+   ```bash
+   # Check coverage for specific files
+   python run_all_tests.py --coverage --file test_main_app.py
+   ```
+
+4. **Performance Issues**
+   ```bash
+   # Run tests in parallel
+   python run_all_tests.py --parallel
+   ```
+
+#### Test Environment Setup
+
+Ensure the following services are running for integration tests:
+
+- **Redis**: `redis-server`
+- **RabbitMQ**: `rabbitmq-server`
+- **Celery**: `celery -A app.workers.celery_app worker --loglevel=info`
+
+Note: Unit tests use mocked services and don't require external dependencies.
+
+### Test Best Practices
+
+1. **Run Tests Frequently**: Run tests after each code change
+2. **Check Coverage**: Ensure new code is covered by tests
+3. **Use Appropriate Test Types**: Use unit tests for isolated components, integration tests for service interactions
+4. **Mock External Dependencies**: Use mocks for external services in unit tests
+5. **Test Edge Cases**: Include tests for error conditions and edge cases
+6. **Performance Testing**: Use performance tests for critical paths
+7. **Maintain Test Data**: Keep test data realistic and comprehensive
 
 ## 📊 Monitoring
 
