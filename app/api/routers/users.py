@@ -2,22 +2,78 @@
 Users API router
 """
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body
-from core.logging import get_logger
-from models.schemas import UserProfile, APIResponse
-from services.user_profile import UserProfileService
-from services.lie_service import LIEService
-from services.cis_service import CISService
-from services.llm_service import llm_service
-from services.results_service import results_service
-from workers.tasks import process_user_comprehensive
+from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi.responses import Response
+from app.core.logging import get_logger
+from app.models.schemas import UserProfile, LocationData, InteractionData
+from app.models.responses import APIResponse
+from app.models.requests import (
+    RecommendationRequest, 
+    UserProfileRequest, 
+    ProcessingRequest, 
+    RefreshRequest, 
+    ResultsFilterRequest,
+    TaskStatusRequest
+)
+from app.api.dependencies import (
+    get_user_profile_service,
+    get_lie_service,
+    get_cis_service,
+    get_llm_service,
+    get_results_service,
+    get_celery_app,
+    get_optional_user_profile_service,
+    get_optional_lie_service,
+    get_optional_cis_service
+)
+from app.services.user_profile import UserProfileService
+from app.services.lie_service import LIEService
+from app.services.cis_service import CISService
+from app.services.llm_service import LLMService
+from app.services.results_service import ResultsService
+from app.workers.tasks import process_user_comprehensive
+from app.utils.prompt_builder import PromptBuilder
 
 router = APIRouter(prefix="/users", tags=["users"])
 logger = get_logger("users_router")
 
 
-@router.get("/{user_id}/profile", response_model=UserProfile)
-async def get_user_profile(user_id: str):
+# OPTIONS handlers for CORS
+@router.options("/{user_id}/profile")
+async def options_user_profile(user_id: str):
+    """Handle OPTIONS request for user profile endpoint"""
+    return Response(status_code=200)
+
+
+@router.options("/{user_id}/location")
+async def options_user_location(user_id: str):
+    """Handle OPTIONS request for user location endpoint"""
+    return Response(status_code=200)
+
+
+@router.options("/{user_id}/interactions")
+async def options_user_interactions(user_id: str):
+    """Handle OPTIONS request for user interactions endpoint"""
+    return Response(status_code=200)
+
+
+@router.options("/{user_id}/recommendations")
+async def options_user_recommendations(user_id: str):
+    """Handle OPTIONS request for user recommendations endpoint"""
+    return Response(status_code=200)
+
+
+@router.options("/{user_id}/results")
+async def options_user_results(user_id: str):
+    """Handle OPTIONS request for user results endpoint"""
+    return Response(status_code=200)
+
+
+@router.get("/{user_id}/profile")
+async def get_user_profile(
+    user_id: str,
+    user_service: UserProfileService = Depends(get_optional_user_profile_service)
+):
     """
     Get comprehensive user profile with mock data
     
@@ -26,25 +82,32 @@ async def get_user_profile(user_id: str):
     try:
         logger.info("Getting user profile", user_id=user_id)
         
-        user_service = UserProfileService()
+        if not user_service:
+            return APIResponse.service_unavailable_response(
+                message="User profile service temporarily unavailable",
+                service="user_profile"
+            )
+        
         user_profile = await user_service.get_user_profile(user_id)
         
         if not user_profile:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User profile not found for user_id: {user_id}"
+            return APIResponse.error_response(
+                message=f"User profile not found for user_id: {user_id}",
+                status_code=404
             )
         
         logger.info("Retrieved user profile", user_id=user_id)
-        return user_profile
+        return APIResponse.success_response(
+            data=user_profile,
+            message="User profile retrieved successfully"
+        )
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Error getting user profile", user_id=user_id, error=str(e))
-        raise HTTPException(
+        return APIResponse.error_response(
+            message="Failed to retrieve user profile",
             status_code=500,
-            detail="Failed to retrieve user profile"
+            error={"details": str(e)}
         )
 
 
@@ -52,7 +115,10 @@ async def get_user_profile(user_id: str):
 
 
 @router.get("/{user_id}/location")
-async def get_user_location_data(user_id: str):
+async def get_user_location_data(
+    user_id: str,
+    lie_service: LIEService = Depends(get_optional_lie_service)
+):
     """
     Get comprehensive location data for a user
     
@@ -61,25 +127,32 @@ async def get_user_location_data(user_id: str):
     try:
         logger.info("Getting user location data", user_id=user_id)
         
-        lie_service = LIEService()
+        if not lie_service:
+            return APIResponse.service_unavailable_response(
+                message="Location service temporarily unavailable",
+                service="lie"
+            )
+        
         location_data = await lie_service.get_location_data(user_id)
         
         if not location_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Location data not found for user_id: {user_id}"
+            return APIResponse.error_response(
+                message=f"Location data not found for user_id: {user_id}",
+                status_code=404
             )
         
         logger.info("Retrieved user location data", user_id=user_id)
-        return location_data
+        return APIResponse.success_response(
+            data=location_data,
+            message="Location data retrieved successfully"
+        )
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Error getting user location data", user_id=user_id, error=str(e))
-        raise HTTPException(
+        return APIResponse.error_response(
+            message="Failed to retrieve user location data",
             status_code=500,
-            detail="Failed to retrieve user location data"
+            error={"details": str(e)}
         )
 
 
@@ -96,7 +169,7 @@ async def get_user_interaction_data(user_id: str):
     try:
         logger.info("Getting user interaction data", user_id=user_id)
         
-        cis_service = CISService()
+        cis_service = CISService(timeout=30)
         interaction_data = await cis_service.get_interaction_data(user_id)
         
         if not interaction_data:
@@ -221,7 +294,7 @@ async def get_processing_status(user_id: str, task_id: str):
         logger.info("Getting processing status", user_id=user_id, task_id=task_id)
         
         # Import here to avoid circular import
-        from workers.celery_app import celery_app
+        from app.workers.celery_app import celery_app
         
         # Get task result from Celery
         task_result = celery_app.AsyncResult(task_id)
@@ -256,27 +329,90 @@ async def get_processing_status(user_id: str, task_id: str):
 
 
 @router.post("/{user_id}/generate-recommendations")
-async def generate_recommendations_endpoint(user_id: str, data: dict = Body(...)):
+async def generate_recommendations_endpoint(
+    user_id: str, 
+    request: RecommendationRequest,
+    llm_service: LLMService = Depends(get_llm_service)
+):
     """Generate recommendations using LLM service"""
     try:
         logger.info(f"Generating recommendations for user {user_id}")
         
-        prompt = data.get("prompt", "")
+        prompt = request.prompt
+        if prompt is None:
+            # Build the original prompt using live data; if any data missing, create minimal stand-ins
+            user_service = get_optional_user_profile_service()
+            lie_service = get_optional_lie_service()
+            cis_service = get_optional_cis_service()
+            user_profile = await user_service.get_user_profile(user_id) if user_service else None
+            location_data = await lie_service.get_location_data(user_id) if lie_service else None
+            interaction_data = await cis_service.get_interaction_data(user_id) if cis_service else None
+            # Minimal stand-ins when any component is missing
+            from app.models.schemas import UserProfile, LocationData, InteractionData
+            if user_profile is None:
+                user_profile = UserProfile(
+                    user_id=user_id,
+                    name=f"User-{user_id}",
+                    email=f"user{user_id}@example.com",
+                    preferences={},
+                    interests=[],
+                    age=30,
+                    location="Barcelona"
+                )
+            if location_data is None:
+                location_data = LocationData(
+                    user_id=user_id,
+                    current_location="Barcelona",
+                    home_location="Barcelona",
+                    work_location="Barcelona",
+                    travel_history=[],
+                    location_preferences={}
+                )
+            if interaction_data is None:
+                interaction_data = InteractionData(
+                    user_id=user_id,
+                    recent_interactions=[],
+                    interaction_history=[],
+                    preferences={},
+                    engagement_score=0.5
+                )
+            builder = PromptBuilder()
+            from app.core.constants import RecommendationType
+            prompt = builder.build_recommendation_prompt(
+                user_profile=user_profile,
+                location_data=location_data,
+                interaction_data=interaction_data,
+                recommendation_type=RecommendationType.PLACE,
+                max_results=5,
+            )
         response = llm_service.generate_recommendations(prompt, user_id)
         
-        return APIResponse(
-            success=response.get("success", False),
-            data=response,
-            message="Recommendations generated successfully" if response.get("success") else "Failed to generate recommendations"
-        )
+        if response.get("success", False):
+            return APIResponse.success_response(
+                data=response,
+                message="Recommendations generated successfully"
+            )
+        else:
+            return APIResponse.error_response(
+                message="Failed to generate recommendations",
+                data=response,
+                status_code=500
+            )
         
     except Exception as e:
         logger.error(f"Error generating recommendations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
+        return APIResponse.error_response(
+            message="Error generating recommendations",
+            status_code=500,
+            error={"details": str(e)}
+        )
 
 
 @router.get("/{user_id}/recommendations")
-async def get_user_recommendations(user_id: str):
+async def get_user_recommendations(
+    user_id: str,
+    llm_service: LLMService = Depends(get_llm_service)
+):
     """Get stored recommendations for a user"""
     try:
         logger.info(f"Retrieving recommendations for user {user_id}")
@@ -284,60 +420,117 @@ async def get_user_recommendations(user_id: str):
         recommendations = llm_service.get_recommendations_from_redis(user_id)
         
         if recommendations:
-            return APIResponse(
-                success=True,
+            return APIResponse.success_response(
                 data=recommendations,
                 message="Recommendations retrieved successfully"
             )
         else:
-            return APIResponse(
-                success=False,
-                data=None,
-                message="No recommendations found for this user"
+            return APIResponse.error_response(
+                message="No recommendations found for this user",
+                status_code=404
             )
         
     except Exception as e:
         logger.error(f"Error retrieving recommendations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving recommendations: {str(e)}")
+        return APIResponse.error_response(
+            message="Error retrieving recommendations",
+            status_code=500,
+            error={"details": str(e)}
+        )
 
 
 @router.delete("/{user_id}/recommendations")
-async def clear_user_recommendations(user_id: str):
+async def clear_user_recommendations(
+    user_id: str,
+    llm_service: LLMService = Depends(get_llm_service)
+):
     """Clear stored recommendations for a user"""
     try:
         logger.info(f"Clearing recommendations for user {user_id}")
         
         llm_service.clear_recommendations(user_id)
         
-        return APIResponse(
-            success=True,
+        return APIResponse.success_response(
             data=None,
             message="Recommendations cleared successfully"
         )
         
     except Exception as e:
         logger.error(f"Error clearing recommendations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error clearing recommendations: {str(e)}")
+        return APIResponse.error_response(
+            message="Error clearing recommendations",
+            status_code=500,
+            error={"details": str(e)}
+        )
 
 
 @router.post("/generate-recommendations")
-async def generate_recommendations_direct(data: dict = Body(...)):
+async def generate_recommendations_direct(
+    request: RecommendationRequest,
+    llm_service: LLMService = Depends(get_llm_service)
+):
     """Generate recommendations without storing (for testing)"""
     try:
         logger.info("Generating recommendations without storing")
         
-        prompt = data.get("prompt", "")
+        prompt = request.prompt
+        if prompt is None:
+            # Build the original prompt with minimal anonymous context
+            from app.models.schemas import UserProfile, LocationData, InteractionData
+            anon_profile = UserProfile(
+                user_id="anon",
+                name="Friend",
+                email="friend@example.com",
+                preferences={},
+                interests=[],
+                age=30,
+                location="Barcelona"
+            )
+            anon_location = LocationData(
+                user_id="anon",
+                current_location="Barcelona",
+                home_location="Barcelona",
+                work_location="Barcelona",
+                travel_history=[],
+                location_preferences={}
+            )
+            anon_interactions = InteractionData(
+                user_id="anon",
+                recent_interactions=[],
+                interaction_history=[],
+                preferences={},
+                engagement_score=0.5
+            )
+            builder = PromptBuilder()
+            from app.core.constants import RecommendationType
+            prompt = builder.build_recommendation_prompt(
+                user_profile=anon_profile,
+                location_data=anon_location,
+                interaction_data=anon_interactions,
+                recommendation_type=RecommendationType.PLACE,
+                max_results=5,
+            )
         response = llm_service.generate_recommendations(prompt)
         
-        return APIResponse(
-            success=response.get("success", False),
-            data=response,
-            message="Recommendations generated successfully" if response.get("success") else "Failed to generate recommendations"
-        )
+        if response.get("success", False):
+            return APIResponse.success_response(
+                data=response,
+                message="Recommendations generated successfully"
+            )
+        else:
+            return APIResponse.error_response(
+                message="Failed to generate recommendations",
+                data=response,
+                status_code=500
+            )
         
     except Exception as e:
         logger.error(f"Error generating recommendations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
+        return APIResponse.error_response(
+            message="Error generating recommendations",
+            status_code=500,
+            error={"details": str(e)}
+        )
 
 
 @router.get("/{user_id}/results")
@@ -345,42 +538,36 @@ async def get_ranked_results(
     user_id: str,
     category: Optional[str] = Query(None, description="Filter by category (movies, music, places, events)"),
     limit: Optional[int] = Query(5, description="Limit results per category"),
-    min_score: Optional[float] = Query(0.0, description="Minimum ranking score")
+    min_score: Optional[float] = Query(0.0, description="Minimum ranking score"),
+    results_service: ResultsService = Depends(get_results_service)
 ):
-    """
-    Get ranked and filtered final results for a user
-    
-    - **user_id**: User identifier
-    - **category**: Optional category filter
-    - **limit**: Maximum results per category (default: 5)
-    - **min_score**: Minimum ranking score (default: 0.0)
-    """
     try:
-        logger.info(f"Getting ranked results for user {user_id}")
+        logger.info(f"Getting ranked results for user {user_id}, filters: {category=}, {limit=}, {min_score=}")
         
-        # Prepare filters
         filters = {
             "category": category,
             "limit": limit,
             "min_score": min_score
         }
         
-        # Get ranked results
         results = results_service.get_ranked_results(user_id, filters)
+        logger.debug(f"Results from service: {results}")
         
         if results.get("success"):
-            return APIResponse(
-                success=True,
+            return APIResponse.success_response(
                 data=results,
                 message="Ranked results retrieved successfully"
             )
         else:
-            return APIResponse(
-                success=False,
-                data=None,
-                message=results.get("error", "No results found")
+            return APIResponse.error_response(
+                message=results.get("error", "No results found"),
+                status_code=404
             )
         
     except Exception as e:
         logger.error(f"Error getting ranked results: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting ranked results: {str(e)}")
+        return APIResponse.error_response(
+            message="Error getting ranked results",
+            status_code=500,
+            error={"details": str(e)}
+        )

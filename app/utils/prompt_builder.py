@@ -4,7 +4,7 @@ with complete JSON structure for all categories
 """
 from typing import Dict, Any, List, Optional
 from app.core.logging import get_logger
-from models.schemas import UserProfile, LocationData, InteractionData
+from app.models.schemas import UserProfile, LocationData, InteractionData
 from app.core.constants import RecommendationType
 import time
 

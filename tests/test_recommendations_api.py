@@ -1,182 +1,164 @@
 """
-Tests for recommendations API endpoints
+Test suite for user recommendations API endpoints using existing user routes
 """
 import pytest
 from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
-from app.main import app
 
 
-class TestRecommendationsAPI:
-    """Test class for recommendations API endpoints"""
+class TestUserRecommendationsAPI:
+    """Test class for user recommendations API endpoints using existing user routes"""
     
-    def test_get_recommendation_types(self, client: TestClient):
-        """Test getting supported recommendation types"""
-        response = client.get("/api/v1/recommendations/types")
+    def test_get_user_recommendations_success(self, client: TestClient, sample_recommendation_response, mock_external_services):
+        """Test getting user recommendations successfully"""
+        # Configure the global mock to return our test data
+        mock_external_services['llm_service'].return_value.get_recommendations_from_redis.return_value = sample_recommendation_response
+        print(f"DEBUG: Mock configured with: {sample_recommendation_response}")
+
+        response = client.get("/api/v1/users/test_user_123/recommendations")
+        print(f"DEBUG: Response status: {response.status_code}")
+        print(f"DEBUG: Response data: {response.json()}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        # The actual response structure has recommendations nested under data.data
+        assert "data" in data
+        assert "recommendations" in data["data"]
+    
+    def test_get_user_recommendations_not_found(self, client: TestClient, mock_external_services):
+        """Test getting user recommendations when none exist"""
+        # Configure the global mock to return None (no recommendations)
+        mock_external_services['llm_service'].return_value.get_recommendations_from_redis.return_value = None
+        
+        response = client.get("/api/v1/users/test_user_123/recommendations")
         
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert "music" in data
-        assert "movie" in data
-        assert "place" in data
-        assert "event" in data
+        assert data["success"] is False
+        assert "No recommendations found" in data["message"]
+    
+    def test_generate_recommendations_success(self, client: TestClient, mock_external_services):
+        """Test generating recommendations successfully"""
+        # Configure the global mock to return success
+        mock_external_services['llm_service'].return_value.generate_recommendations.return_value = {"success": True, "recommendations": []}
+        
+        response = client.post(
+            "/api/v1/users/test_user_123/generate-recommendations",
+            json={"prompt": "I like jazz music"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "Recommendations generated successfully" in data["message"]
+    
+    def test_generate_recommendations_direct_success(self, client: TestClient, mock_external_services):
+        """Test generating recommendations directly (without storing)"""
+        # Configure the global mock to return success
+        mock_external_services['llm_service'].return_value.generate_recommendations.return_value = {"success": True, "recommendations": []}
+        
+        response = client.post(
+            "/api/v1/users/generate-recommendations",
+            json={"prompt": "I like jazz music"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "Recommendations generated successfully" in data["message"]
+    
+    def test_clear_user_recommendations_success(self, client: TestClient, mock_external_services):
+        """Test clearing user recommendations successfully"""
+        # Configure the global mock to return None (successful clear)
+        mock_external_services['llm_service'].return_value.clear_recommendations.return_value = None
+        
+        response = client.delete("/api/v1/users/test_user_123/recommendations")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "Recommendations cleared successfully" in data["message"]
+    
+    def test_get_ranked_results_success(self, client: TestClient, mock_external_services):
+        """Test getting ranked results successfully"""
+        # Configure the global mock to return success
+        mock_external_services['results_service'].return_value.get_ranked_results.return_value = {"success": True, "results": []}
+        
+        response = client.get("/api/v1/users/test_user_123/results")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "Ranked results retrieved successfully" in data["message"]
+    
+    def test_get_ranked_results_with_filters(self, client: TestClient, mock_external_services):
+        """Test getting ranked results with filters"""
+        # Configure the global mock to return success
+        mock_external_services['results_service'].return_value.get_ranked_results.return_value = {"success": True, "results": []}
+        
+        response = client.get(
+            "/api/v1/users/test_user_123/results?category=music&limit=10&min_score=0.5"
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        # Verify the service was called with correct filters
+        mock_external_services['results_service'].return_value.get_ranked_results.assert_called_once()
+        call_args = mock_external_services['results_service'].return_value.get_ranked_results.call_args
+        assert call_args[0][0] == "test_user_123"  # user_id
+        filters = call_args[0][1]  # filters dict
+        assert filters["category"] == "music"
+        assert filters["limit"] == 10
+        assert filters["min_score"] == 0.5
 
 
+class TestUserRecommendationsIntegration:
+    """Integration tests for user recommendations workflow"""
     
-    def test_get_recommendations_invalid_type(self, client: TestClient):
-        """Test getting recommendations with invalid type"""
-        response = client.get("/api/v1/recommendations/invalid_type?user_id=test_user")
+    def test_full_recommendation_workflow(self, client: TestClient, sample_recommendation_response, mock_external_services):
+        """Test the complete user recommendation workflow"""
+        # Configure all the global mocks
+        mock_external_services['llm_service'].return_value.generate_recommendations.return_value = {"success": True, "recommendations": []}
+        mock_external_services['llm_service'].return_value.get_recommendations_from_redis.return_value = sample_recommendation_response
+        mock_external_services['results_service'].return_value.get_ranked_results.return_value = {"success": True, "results": []}
         
-        assert response.status_code == 422  # Validation error
-    
-    def test_refresh_recommendations_success(self, client: TestClient):
-        """Test refreshing recommendations successfully"""
-        with patch("app.api.workers.tasks.generate_recommendations") as mock_task:
-            mock_task.delay.return_value.id = "test_task_id"
-            
-            response = client.post(
-                "/api/v1/recommendations/refresh/test_user_123",
-                json={"user_id": "test_user_123", "force": False}
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "task_triggered" in data["message"]
-            assert data["data"]["user_id"] == "test_user_123"
-            assert len(data["data"]["tasks"]) == 4  # 4 recommendation types
-    
-    def test_refresh_recommendations_force(self, client: TestClient):
-        """Test refreshing recommendations with force flag"""
-        with patch('app.api.workers.tasks.generate_recommendations') as mock_task:
-            mock_task.delay.return_value.id = "test_task_id"
-            
-            response = client.post(
-                "/api/v1/recommendations/refresh/test_user_123",
-                json={"user_id": "test_user_123", "force": True}
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["data"]["force_refresh"] is True
-    
-
-    def test_get_task_status_pending(self, client: TestClient):
-        """Test getting task status for pending task"""
-        with patch('app.api.workers.celery_app.celery_app') as mock_celery:
-            mock_result = AsyncMock()
-            mock_result.status = "PENDING"
-            mock_result.date_done = None
-            mock_celery.AsyncResult.return_value = mock_result
-            
-            response = client.get("/api/v1/recommendations/status/test_task_id")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["task_id"] == "test_task_id"
-            assert data["status"] == "PENDING"
-    
-    def test_get_task_status_completed(self, client: TestClient):
-        """Test getting task status for completed task"""
-        from datetime import datetime
+        # Step 1: Generate recommendations
+        generate_response = client.post(
+            "/api/v1/users/test_user_123/generate-recommendations",
+            json={"prompt": "I like jazz music"}
+        )
         
-        with patch('app.api.workers.celery_app.celery_app') as mock_celery:
-            mock_result = AsyncMock()
-            mock_result.status = "SUCCESS"
-            mock_result.date_done = datetime.utcnow()
-            mock_result.successful.return_value = True
-            mock_result.result = {"success": True, "message": "Task completed"}
-            mock_celery.AsyncResult.return_value = mock_result
-            
-            response = client.get("/api/v1/recommendations/status/test_task_id")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "SUCCESS"
-            assert data["result"]["success"] is True
-    
-    def test_get_task_status_failed(self, client: TestClient):
-        """Test getting task status for failed task"""
-        from datetime import datetime
+        assert generate_response.status_code == 200
+        data = generate_response.json()
+        assert data["success"] is True
         
-        with patch('app.api.workers.celery_app.celery_app') as mock_celery:
-            mock_result = AsyncMock()
-            mock_result.status = "FAILURE"
-            mock_result.date_done = datetime.utcnow()
-            mock_result.successful.return_value = False
-            mock_result.failed.return_value = True
-            mock_result.info = "Task failed due to error"
-            mock_celery.AsyncResult.return_value = mock_result
-            
-            response = client.get("/api/v1/recommendations/status/test_task_id")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "FAILURE"
-            assert "Task failed due to error" in data["error"]
-
-
-class TestRecommendationsIntegration:
-    """Integration tests for recommendations workflow"""
-    
-    def test_full_recommendation_workflow(self, client: TestClient):
-        """Test the complete recommendation workflow"""
-        # Step 1: Refresh recommendations
-        with patch('app.api.workers.tasks.generate_recommendations') as mock_task:
-            mock_task.delay.return_value.id = "workflow_task_id"
-            
-            refresh_response = client.post(
-                "/api/v1/recommendations/refresh/test_user_123",
-                json={"user_id": "test_user_123", "force": True}
-            )
-            
-            assert refresh_response.status_code == 200
+        # Step 2: Get recommendations
+        get_response = client.get("/api/v1/users/test_user_123/recommendations")
         
-        # Step 2: Check task status
-        with patch('app.api.workers.celery_app.celery_app') as mock_celery:
-            mock_result = AsyncMock()
-            mock_result.status = "SUCCESS"
-            mock_result.date_done = "2024-01-01T12:00:00Z"
-            mock_result.successful.return_value = True
-            mock_result.result = {"success": True, "message": "Workflow completed"}
-            mock_celery.AsyncResult.return_value = mock_result
-            
-            status_response = client.get("/api/v1/recommendations/status/workflow_task_id")
-            
-            assert status_response.status_code == 200
-            data = status_response.json()
-            assert data["status"] == "SUCCESS"
+        assert get_response.status_code == 200
+        data = get_response.json()
+        assert data["success"] is True
+        assert "data" in data
         
-        # Step 3: Get recommendations (after they're generated)
-        with patch('app.api.dependencies.get_cache_service') as mock_get_cache:
-            mock_cache = AsyncMock()
-            mock_cache.get_recommendations.return_value = sample_recommendation_response
-            mock_get_cache.return_value = mock_cache
-            
-            get_response = client.get("/api/v1/recommendations/music?user_id=test_user_123")
-            
-            assert get_response.status_code == 200
-            data = get_response.json()
-            assert data["user_id"] == "test_user_123"
-            assert data["type"] == "music"
+        # Step 3: Get ranked results
+        ranked_response = client.get("/api/v1/users/test_user_123/results")
+        
+        assert ranked_response.status_code == 200
+        data = ranked_response.json()
+        assert data["success"] is True
     
     def test_error_handling(self, client: TestClient):
-        """Test error handling in recommendations API"""
-        # Test with missing user_id parameter
-        response = client.get("/api/v1/recommendations/music")
-        
-        assert response.status_code == 422  # Validation error
-        
-        # Test with invalid recommendation type
-        response = client.get("/api/v1/recommendations/invalid?user_id=test_user")
-        
-        assert response.status_code == 422  # Validation error
-        
-        # Test with malformed refresh request
+        """Test error handling in user recommendations API"""
+        # Test with missing prompt in generate recommendations
         response = client.post(
-            "/api/v1/recommendations/refresh/test_user_123",
-            json={"invalid_field": "value"}
+            "/api/v1/users/test_user_123/generate-recommendations",
+            json={}
         )
         
         assert response.status_code == 422  # Validation error
+        
+        # Test with invalid user ID format
+        response = client.get("/api/v1/users/invalid_user_id/recommendations")
+        assert response.status_code == 200  # Should still return 200 with error message

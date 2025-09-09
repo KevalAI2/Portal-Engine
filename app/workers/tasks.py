@@ -25,9 +25,9 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
         logger.info("Starting user data fetch", user_id=user_id, task_id=self.request.id)
         
         # Create service instances
-        user_service = UserProfileService()
-        lie_service = LIEService()
-        cis_service = CISService()
+        user_service = UserProfileService(timeout=30)
+        lie_service = LIEService(timeout=30)
+        cis_service = CISService(timeout=30)
         
         # Run async operations
         loop = asyncio.new_event_loop()
@@ -89,7 +89,7 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
         # rather than failing the pipeline.
         missing_any = not any([user_profile_data, location_data, interaction_data])
         
-        from models.schemas import UserProfile, LocationData, InteractionData
+        from app.models.schemas import UserProfile, LocationData, InteractionData
         if missing_any:
             # Use best-available partial objects to inform fallback
             user_profile = UserProfile(**user_profile_data) if user_profile_data else None
@@ -430,9 +430,9 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
         print(f"   🚀 Status: Fetching user data from all services...\n")
         
         # Create service instances
-        user_service = UserProfileService()
-        lie_service = LIEService()
-        cis_service = CISService()
+        user_service = UserProfileService(timeout=30)
+        lie_service = LIEService(timeout=30)
+        cis_service = CISService(timeout=30)
         
         # Run async operations to fetch all user data
         loop = asyncio.new_event_loop()
@@ -642,9 +642,9 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
         print(f"   🚀 Status: Fetching user data and generating prompt...\n")
         
         # Create service instances
-        user_service = UserProfileService()
-        lie_service = LIEService()
-        cis_service = CISService()
+        user_service = UserProfileService(timeout=30)
+        lie_service = LIEService(timeout=30)
+        cis_service = CISService(timeout=30)
         prompt_builder = PromptBuilder()
         
         # Run async operations to fetch all user data

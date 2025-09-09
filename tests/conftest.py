@@ -9,6 +9,11 @@ from typing import Dict, Any, Generator
 import json
 import os
 import sys
+from app.api.dependencies import (
+    get_user_profile_service,
+    get_lie_service,
+    get_cis_service,
+)
 
 # Add the app directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
@@ -27,10 +32,16 @@ def event_loop():
 
 
 @pytest.fixture
-def client():
-    """Create a test client for the FastAPI application."""
-    with TestClient(app) as test_client:
-        yield test_client
+def client(mock_user_profile_service, mock_lie_service, mock_cis_service):
+    # ✅ Correct: override with function references, not strings
+    app.dependency_overrides[get_user_profile_service] = lambda: mock_user_profile_service
+    app.dependency_overrides[get_lie_service] = lambda: mock_lie_service
+    app.dependency_overrides[get_cis_service] = lambda: mock_cis_service
+
+    with TestClient(app) as c:
+        yield c
+
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -195,12 +206,13 @@ def mock_ranked_results():
 def sample_recommendation_response():
     """Sample recommendation response used by recommendations API tests."""
     return {
-        "user_id": "1",
+        "user_id": "test_user_123",
         "type": "music",
         "recommendations": [
             {"title": "Test Music", "ranking_score": 0.9}
         ]
     }
+
 
 
 @pytest.fixture(autouse=True)
@@ -254,30 +266,31 @@ def mock_redis_client():
 
 
 @pytest.fixture
-def mock_user_profile_service():
-    """Mock UserProfileService."""
+def mock_user_profile_service(mock_external_services):
     service = Mock()
     service.get_user_profile = AsyncMock()
     service.health_check = AsyncMock(return_value=True)
+    mock_external_services['user_profile_service'].return_value = service
     return service
 
 
 @pytest.fixture
-def mock_lie_service():
-    """Mock LIEService."""
+def mock_lie_service(mock_external_services):
     service = Mock()
     service.get_location_data = AsyncMock()
     service.health_check = AsyncMock(return_value=True)
+    mock_external_services['lie_service'].return_value = service
     return service
 
 
 @pytest.fixture
-def mock_cis_service():
-    """Mock CISService."""
+def mock_cis_service(mock_external_services):
     service = Mock()
     service.get_interaction_data = AsyncMock()
     service.health_check = AsyncMock(return_value=True)
+    mock_external_services['cis_service'].return_value = service
     return service
+
 
 
 @pytest.fixture

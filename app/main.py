@@ -1,18 +1,21 @@
 """
 Main FastAPI application entry point
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 import time
 import sys
 import os
+from pydantic import ValidationError
 
-from core.config import settings
-from core.logging import get_logger
-from api.routers import health, users
+from app.core.config import settings
+from app.core.logging import get_logger
+from app.api.routers import health, users
+from app.models.responses import APIResponse
 
 # Configure logging
 logger = get_logger("main")
@@ -47,8 +50,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -106,9 +110,74 @@ async def log_requests(request: Request, call_next):
         raise
 
 
+# Exception handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors"""
+    logger.warning(
+        "Validation error",
+        method=request.method,
+        url=str(request.url),
+        errors=exc.errors()
+    )
+    
+    response = APIResponse.validation_error_response(
+        message="Validation error",
+        errors=exc.errors()
+    )
+    
+    return JSONResponse(
+        status_code=422,
+        content=response.model_dump()
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions"""
+    logger.warning(
+        "HTTP exception",
+        method=request.method,
+        url=str(request.url),
+        status_code=exc.status_code,
+        detail=exc.detail
+    )
+    
+    response = APIResponse.error_response(
+        message=exc.detail,
+        status_code=exc.status_code
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=response.model_dump()
+    )
+
+
+@app.exception_handler(ValidationError)
+async def pydantic_validation_exception_handler(request: Request, exc: ValidationError):
+    """Handle Pydantic validation errors"""
+    logger.warning(
+        "Pydantic validation error",
+        method=request.method,
+        url=str(request.url),
+        errors=exc.errors()
+    )
+    
+    response = APIResponse.validation_error_response(
+        message="Data validation error",
+        errors=exc.errors()
+    )
+    
+    return JSONResponse(
+        status_code=422,
+        content=response.model_dump()
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
+    """Global exception handler for unhandled exceptions"""
     logger.error(
         "Unhandled exception",
         method=request.method,
@@ -117,13 +186,15 @@ async def global_exception_handler(request: Request, exc: Exception):
         exc_info=True
     )
     
+    response = APIResponse.error_response(
+        message="Internal server error",
+        status_code=500,
+        error={"details": str(exc)} if settings.debug else None
+    )
+    
     return JSONResponse(
         status_code=500,
-        content={
-            "success": False,
-            "message": "Internal server error",
-            "error": str(exc) if settings.debug else "An unexpected error occurred"
-        }
+        content=response.model_dump()
     )
 
 
@@ -141,19 +212,32 @@ app.include_router(
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {
+    data = {
         "message": f"Welcome to {settings.app_name}",
         "version": settings.app_version,
         "environment": settings.environment,
         "docs": "/docs",
         "health": f"{settings.api_prefix}/health"
     }
+    return APIResponse.success_response(data=data, message="API is running")
 
 
 @app.get("/ping")
 async def ping():
     """Simple ping endpoint"""
-    return {"message": "pong"}
+    return APIResponse.success_response(data={"message": "pong"}, message="Pong")
+
+
+@app.options("/")
+async def options_root():
+    """Handle OPTIONS request for root endpoint"""
+    return Response(status_code=200)
+
+
+@app.options("/ping")
+async def options_ping():
+    """Handle OPTIONS request for ping endpoint"""
+    return Response(status_code=200)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 """
 Health check API router
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from app.core.logging import get_logger
 from app.core.config import settings
-from app.models.schemas import HealthCheckResponse
+from app.models.responses import HealthCheckResponse, APIResponse
 from app.services.user_profile import UserProfileService
 from app.services.lie_service import LIEService
 from app.services.cis_service import CISService
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 logger = get_logger("health_router")
 
 
-@router.get("/", response_model=HealthCheckResponse)
+@router.get("/")
 async def health_check(
     user_profile_service: UserProfileService = Depends(get_user_profile_service),
     lie_service: LIEService = Depends(get_lie_service),
@@ -61,9 +61,9 @@ async def health_check(
         else:
             overall_status = "unhealthy"
         
-        response = HealthCheckResponse(
+        health_data = HealthCheckResponse(
             status=overall_status,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             version=settings.app_version,
             environment=settings.environment,
             services=services_status
@@ -71,17 +71,26 @@ async def health_check(
         
         logger.info("Health check completed", status=overall_status, services=services_status)
         
-        return response
+        return APIResponse.success_response(
+            data=health_data.model_dump(),
+            message="Health check completed"
+        )
         
     except Exception as e:
         logger.error("Health check failed", error=str(e))
         
-        return HealthCheckResponse(
+        error_data = HealthCheckResponse(
             status="unhealthy",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             version=settings.app_version,
             environment=settings.environment,
             services={"error": str(e)}
+        )
+        
+        return APIResponse.error_response(
+            message="Health check failed",
+            data=error_data.model_dump(),
+            status_code=503
         )
 
 
@@ -94,11 +103,29 @@ async def readiness_check():
         # Check if the service is ready to handle requests
         # This could include checking database connections, cache, etc.
         
-        return {"status": "ready"}
+        data = {
+            "status": "ready",
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": "Service is ready to accept requests"
+        }
+        
+        return APIResponse.success_response(
+            data=data,
+            message="Service is ready"
+        )
         
     except Exception as e:
         logger.error("Readiness check failed", error=str(e))
-        return {"status": "not_ready", "error": str(e)}
+        
+        return APIResponse.error_response(
+            message="Service not ready",
+            data={
+                "status": "not_ready",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e)
+            },
+            status_code=503
+        )
 
 
 @router.get("/live")
@@ -108,8 +135,26 @@ async def liveness_check():
     """
     try:
         # Simple check to see if the service is alive
-        return {"status": "alive"}
+        data = {
+            "status": "alive",
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": "Service is alive"
+        }
+        
+        return APIResponse.success_response(
+            data=data,
+            message="Service is alive"
+        )
         
     except Exception as e:
         logger.error("Liveness check failed", error=str(e))
-        return {"status": "dead", "error": str(e)}
+        
+        return APIResponse.error_response(
+            message="Service is not alive",
+            data={
+                "status": "dead",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e)
+            },
+            status_code=503
+        )
