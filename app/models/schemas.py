@@ -3,7 +3,7 @@ Pydantic schemas for API requests and responses
 """
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from app.core.constants import RecommendationType, TaskStatus, NotificationType
 
 
@@ -17,6 +17,12 @@ class UserProfile(BaseModel):
     age: Optional[int] = Field(None, description="User's age")
     location: Optional[str] = Field(None, description="User's location")
 
+    # Pydantic v2 config to prevent recursion
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
 
 class LocationData(BaseModel):
     """Location data from LIE (Location Information Engine) Service"""
@@ -27,6 +33,11 @@ class LocationData(BaseModel):
     travel_history: List[str] = Field(default_factory=list, description="Travel history")
     location_preferences: Dict[str, Any] = Field(default_factory=dict, description="Location preferences")
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
 
 class InteractionData(BaseModel):
     """Interaction data from CIS (Customer Interaction Service)"""
@@ -35,6 +46,11 @@ class InteractionData(BaseModel):
     interaction_history: List[Dict[str, Any]] = Field(default_factory=list, description="Interaction history")
     preferences: Dict[str, Any] = Field(default_factory=dict, description="Interaction preferences")
     engagement_score: Optional[float] = Field(None, description="User engagement score")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
 
 
 class RecommendationItem(BaseModel):
@@ -46,6 +62,11 @@ class RecommendationItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     url: Optional[str] = Field(None, description="URL to the recommendation")
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
 
 class RecommendationResponse(BaseModel):
     """Recommendation response from cache"""
@@ -55,6 +76,11 @@ class RecommendationResponse(BaseModel):
     generated_at: datetime = Field(..., description="When recommendations were generated")
     expires_at: datetime = Field(..., description="When recommendations expire")
     total_count: int = Field(..., description="Total number of recommendations")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
 
 
 class TaskStatusResponse(BaseModel):
@@ -66,6 +92,11 @@ class TaskStatusResponse(BaseModel):
     error: Optional[str] = Field(None, description="Error message if failed")
     created_at: datetime = Field(..., description="When task was created")
     updated_at: datetime = Field(..., description="When task was last updated")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
 
 
 class NotificationItem(BaseModel):
@@ -79,11 +110,21 @@ class NotificationItem(BaseModel):
     read: bool = Field(default=False, description="Whether notification has been read")
     created_at: datetime = Field(..., description="When notification was created")
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
 
 class RefreshRequest(BaseModel):
     """Request to refresh recommendations for a user"""
     user_id: str = Field(..., description="User identifier to refresh recommendations for")
     force: bool = Field(default=False, description="Force refresh even if recent data exists")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
 
 
 class APIResponse(BaseModel):
@@ -93,6 +134,11 @@ class APIResponse(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="Response data")
     error: Optional[str] = Field(None, description="Error message if failed")
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
 
 class HealthCheckResponse(BaseModel):
     """Health check response"""
@@ -101,3 +147,30 @@ class HealthCheckResponse(BaseModel):
     version: str = Field(..., description="Application version")
     environment: str = Field(..., description="Environment name")
     services: Dict[str, str] = Field(..., description="Status of dependent services")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
+
+# Safe serialization methods to prevent recursion
+def safe_model_dump(model_instance, **kwargs):
+    """Safely convert Pydantic model to dict to prevent recursion"""
+    if hasattr(model_instance, 'model_dump'):
+        return model_instance.model_dump(**kwargs)
+    elif hasattr(model_instance, 'dict'):
+        return model_instance.dict(**kwargs)
+    return model_instance
+
+
+# Add safe dump methods to all models
+for model_class in [
+    UserProfile, LocationData, InteractionData, RecommendationItem,
+    RecommendationResponse, TaskStatusResponse, NotificationItem,
+    RefreshRequest, APIResponse, HealthCheckResponse
+]:
+    if hasattr(model_class, 'model_dump'):
+        model_class.safe_dump = lambda self, **kwargs: safe_model_dump(self, **kwargs)
+    else:
+        model_class.safe_dump = lambda self, **kwargs: safe_model_dump(self, **kwargs)

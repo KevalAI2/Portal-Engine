@@ -11,6 +11,10 @@ class RecommendationRequest(BaseModel):
         default=None,
         description="User prompt for recommendations; if omitted, the server builds one"
     )
+    class Config:
+        json_schema_extra = {
+            "example": {"prompt": "I like concerts"}
+        }
     
     @field_validator('prompt')
     @classmethod

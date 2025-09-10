@@ -33,6 +33,7 @@ from app.services.llm_service import LLMService
 from app.services.results_service import ResultsService
 from app.workers.tasks import process_user_comprehensive
 from app.utils.prompt_builder import PromptBuilder
+from celery import Celery
 
 router = APIRouter(prefix="/users", tags=["users"])
 logger = get_logger("users_router")
@@ -282,50 +283,50 @@ async def process_user_comprehensive_direct_endpoint(user_id: str):
         )
 
 
+
+
 @router.get("/{user_id}/processing-status/{task_id}")
-async def get_processing_status(user_id: str, task_id: str):
-    """
-    Get the status of a comprehensive processing task
-    
-    - **user_id**: User identifier
-    - **task_id**: Task identifier
-    """
+async def get_processing_status(
+    user_id: str,
+    task_id: str,
+    celery_app: Celery = Depends(get_celery_app)
+):
+    """Get processing status for a task."""
     try:
-        logger.info("Getting processing status", user_id=user_id, task_id=task_id)
-        
-        # Import here to avoid circular import
-        from app.workers.celery_app import celery_app
-        
-        # Get task result from Celery
+        # Add validation to prevent recursion
         task_result = celery_app.AsyncResult(task_id)
         
-        response = {
-            "user_id": user_id,
-            "task_id": task_id,
+        # Convert to simple dict to avoid recursion
+        result_data = {
             "status": task_result.status,
-            "created_at": task_result.date_done or task_result.date_done,
-            "updated_at": task_result.date_done or task_result.date_done
+            "successful": task_result.successful(),
+            "failed": task_result.failed(),
+            "date_done": task_result.date_done.isoformat() if task_result.date_done else None
         }
         
-        if task_result.successful():
-            response["result"] = task_result.result
-            response["completed"] = True
-        elif task_result.failed():
-            response["error"] = str(task_result.info)
-            response["completed"] = False
-        else:
-            response["completed"] = False
+        # Handle result safely
+        if hasattr(task_result, 'result') and task_result.result:
+            if isinstance(task_result.result, dict):
+                result_data["result"] = task_result.result
+            else:
+                # Convert to dict if it's a model
+                result_data["result"] = safe_model_dump(task_result.result)
         
-        logger.info("Retrieved processing status", user_id=user_id, task_id=task_id, status=task_result.status)
-        
-        return response
+        return {
+            "success": True,
+            "data": result_data,
+            "user_id": user_id,
+            "task_id": task_id
+        }
         
     except Exception as e:
-        logger.error("Error getting processing status", user_id=user_id, task_id=task_id, error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get processing status for task {task_id}"
-        )
+        logger.error(f"Error getting processing status: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "user_id": user_id,
+            "task_id": task_id
+        }
 
 
 @router.post("/{user_id}/generate-recommendations")
@@ -385,7 +386,8 @@ async def generate_recommendations_endpoint(
                 recommendation_type=RecommendationType.PLACE,
                 max_results=5,
             )
-        response = llm_service.generate_recommendations(prompt, user_id)
+            print('prompt: ', prompt)
+        response = await llm_service.generate_recommendations(prompt, user_id)
         
         if response.get("success", False):
             return APIResponse.success_response(
@@ -510,7 +512,7 @@ async def generate_recommendations_direct(
                 recommendation_type=RecommendationType.PLACE,
                 max_results=5,
             )
-        response = llm_service.generate_recommendations(prompt)
+        response = await llm_service.generate_recommendations(prompt)
         
         if response.get("success", False):
             return APIResponse.success_response(
@@ -541,17 +543,26 @@ async def get_ranked_results(
     min_score: Optional[float] = Query(0.0, description="Minimum ranking score"),
     results_service: ResultsService = Depends(get_results_service)
 ):
+    """
+    Get ranked and filtered final results for a user
+    
+    - **user_id**: User identifier
+    - **category**: Optional category filter
+    - **limit**: Maximum results per category (default: 5)
+    - **min_score**: Minimum ranking score (default: 0.0)
+    """
     try:
-        logger.info(f"Getting ranked results for user {user_id}, filters: {category=}, {limit=}, {min_score=}")
+        logger.info(f"Getting ranked results for user {user_id}")
         
+        # Prepare filters
         filters = {
             "category": category,
             "limit": limit,
             "min_score": min_score
         }
         
+        # Get ranked results
         results = results_service.get_ranked_results(user_id, filters)
-        logger.debug(f"Results from service: {results}")
         
         if results.get("success"):
             return APIResponse.success_response(

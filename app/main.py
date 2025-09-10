@@ -16,6 +16,15 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.api.routers import health, users
 from app.models.responses import APIResponse
+from app.utils.serialization import safe_serialize
+import json
+
+class SafeJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        try:
+            return safe_serialize(obj)
+        except (TypeError, RecursionError):
+            return str(obj)
 
 # Configure logging
 logger = get_logger("main")
@@ -42,7 +51,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    json_encoder=SafeJSONEncoder  # Add custom encoder
 )
 
 # Add middleware
