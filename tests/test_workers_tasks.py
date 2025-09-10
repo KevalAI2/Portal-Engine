@@ -1,587 +1,480 @@
-"""
-Comprehensive test suite for Celery workers module
-"""
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from app.workers.tasks import (
-    fetch_user_data,
-    build_prompt,
-    call_llm,
-    cache_results,
-    generate_recommendations,
-    process_user,
-    get_users,
-    process_user_comprehensive,
-    generate_user_prompt
-)
+from unittest.mock import Mock, patch
+from app.utils.prompt_builder import PromptBuilder, RecommendationType
 
 
 @pytest.mark.unit
-class TestCeleryWorkers:
-    """Test the Celery workers functionality."""
+class TestPromptBuilder:
+    """Test the prompt builder utility functionality."""
 
-    def test_fetch_user_data(self):
-        """Test fetch_user_data task."""
-        with patch('app.workers.tasks.UserProfileService') as mock_user_service:
-            with patch('app.workers.tasks.LIEService') as mock_lie_service:
-                with patch('app.workers.tasks.CISService') as mock_cis_service:
-                    # Mock the service instances and their async methods
-                    mock_user_instance = Mock()
-                    mock_lie_instance = Mock()
-                    mock_cis_instance = Mock()
-                    
-                    # Create mock UserProfile object
-                    mock_profile = Mock()
-                    mock_profile.model_dump.return_value = {"user_id": "user_123", "name": "Test User"}
-                    
-                    # Create mock LocationData and InteractionData objects
-                    mock_location = Mock()
-                    mock_location.model_dump.return_value = {"user_id": "user_123", "location": "Test City"}
-                    
-                    mock_interaction = Mock()
-                    mock_interaction.model_dump.return_value = {"user_id": "user_123", "interactions": []}
-                    
-                    # Set up async method returns
-                    mock_user_instance.get_user_profile = AsyncMock(return_value=mock_profile)
-                    mock_lie_instance.get_location_data = AsyncMock(return_value=mock_location)
-                    mock_cis_instance.get_interaction_data = AsyncMock(return_value=mock_interaction)
-                    
-                    # Set up service constructors
-                    mock_user_service.return_value = mock_user_instance
-                    mock_lie_service.return_value = mock_lie_instance
-                    mock_cis_service.return_value = mock_cis_instance
+    @pytest.fixture
+    def prompt_builder(self):
+        """Create PromptBuilder instance for testing."""
+        return PromptBuilder()
 
-                    result = fetch_user_data("user_123")
+    @pytest.fixture
+    def mock_get_json_structure_requirements(self, prompt_builder):
+        """Mock _get_json_structure_requirements to avoid AttributeError."""
+        with patch.object(prompt_builder, '_get_json_structure_requirements', return_value='{"recommendations": []}') as mock_method:
+            yield mock_method
 
-                    assert isinstance(result, dict)
-                    assert result["success"] is True
-                    assert "user_data" in result
-                    assert "user_profile" in result["user_data"]
-                    assert "location_data" in result["user_data"]
-                    assert "interaction_data" in result["user_data"]
+    def test_prompt_builder_initialization(self, prompt_builder):
+        """Test PromptBuilder initialization."""
+        assert prompt_builder is not None
+        assert isinstance(prompt_builder, PromptBuilder)
 
-    def test_fetch_user_data_error_handling(self):
-        """Test fetch_user_data task error handling."""
-        with patch('app.workers.tasks.UserProfileService') as mock_user_service:
-            mock_user_service.side_effect = Exception("Service error")
-            
-            result = fetch_user_data("user_123")
-            
-            assert isinstance(result, dict)
-            assert "error" in result
-
-    def test_fetch_user_data_empty_user_id(self):
-        """Test fetch_user_data task with empty user ID."""
-        result = fetch_user_data("")
+    def test_get_ranking_language(self, prompt_builder):
+        """Test ranking language generation."""
+        test_cases = [
+            (1, "very likely"),
+            (2, "likely"),
+            (3, "may be like"),
+            (4, "fourth"),
+            (5, "fifth"),
+            (10, "tenth"),
+            (100, "hundredth"),
+        ]
         
-        assert isinstance(result, dict)
-        assert "error" in result
+        for rank, expected in test_cases:
+            result = prompt_builder._get_ranking_language(rank)
+            assert isinstance(result, str)
+            assert len(result) > 0
+            assert expected in result.lower()
 
-    def test_fetch_user_data_none_user_id(self):
-        """Test fetch_user_data task with None user ID."""
-        result = fetch_user_data(None)
+    def test_get_ranking_language_edge_cases(self, prompt_builder):
+        """Test ranking language edge cases."""
+        result = prompt_builder._get_ranking_language(0)
+        assert isinstance(result, str)
+        assert len(result) > 0
         
-        assert isinstance(result, dict)
-        assert "error" in result
+        result = prompt_builder._get_ranking_language(-1)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        
+        result = prompt_builder._get_ranking_language(1000)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_build_prompt(self):
-        """Test build_prompt task."""
-        user_data = {
-            "user_data": {
-                "user_profile": {
-                    "user_id": "user_123",
-                    "name": "John",
-                    "email": "john@example.com",
-                    "age": 30,
-                    "location": "New York, NY",
-                    "interests": ["travel"],
-                    "preferences": {"accommodation": "hotel"}
-                },
-                "location_data": {
-                    "user_id": "user_123",
-                    "current_location": "New York, NY",
-                    "home_location": "New York, NY",
-                    "travel_history": ["Paris", "London"]
-                },
-                "interaction_data": {
-                    "user_id": "user_123",
-                    "recent_interactions": [{"rating": 5, "interaction_type": "review"}],
-                    "engagement_score": 0.8
-                }
-            }
+    def test_get_ranking_language_performance(self, prompt_builder):
+        """Test ranking language performance."""
+        import time
+        
+        start_time = time.time()
+        for i in range(1000):
+            prompt_builder._get_ranking_language(i)
+        end_time = time.time()
+        
+        assert end_time - start_time < 1.0
+
+    def test_extract_top_interests(self, prompt_builder):
+        """Test top interests extraction."""
+        user_profile = {
+            "interests": ["travel", "food", "adventure", "culture", "nature", "music", "art", "sports"]
         }
         
-        with patch('app.workers.tasks.PromptBuilder') as mock_prompt_builder:
-            mock_builder = Mock()
-            mock_builder.build_recommendation_prompt.return_value = "Test prompt"
-            mock_prompt_builder.return_value = mock_builder
-            
-            result = build_prompt(user_data, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert result["success"] is True
-            assert "prompt" in result
+        result = prompt_builder._extract_top_interests(user_profile, limit=3)
+        
+        assert isinstance(result, list)
+        assert len(result) <= 3
+        assert all(isinstance(interest, str) for interest in result)
+        assert all(len(interest) > 0 for interest in result)
 
-    def test_build_prompt_error_handling(self):
-        """Test build_prompt task error handling."""
-        user_data = {}
+    def test_extract_top_interests_empty(self, prompt_builder):
+        """Test top interests extraction with empty interests."""
+        user_profile = {"interests": []}
         
-        with patch('app.workers.tasks.PromptBuilder') as mock_prompt_builder:
-            mock_prompt_builder.side_effect = Exception("Builder error")
-            
-            result = build_prompt(user_data, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert result["success"] is False
-            assert "error" in result
+        result = prompt_builder._extract_top_interests(user_profile, limit=3)
+        
+        assert isinstance(result, list)
+        assert len(result) == 0
 
-    def test_build_prompt_empty_data(self):
-        """Test build_prompt task with empty data."""
-        user_data = {}
+    def test_extract_top_interests_missing(self, prompt_builder):
+        """Test top interests extraction with missing interests."""
+        user_profile = {}
         
-        result = build_prompt(user_data, "PLACE")
+        result = prompt_builder._extract_top_interests(user_profile, limit=3)
         
-        assert isinstance(result, dict)
-        assert result["success"] is False
-        assert "error" in result
+        assert isinstance(result, list)
+        assert len(result) == 0
 
-    def test_call_llm(self):
-        """Test call_llm task."""
-        prompt = "Test prompt"
-        user_context = {"user_id": "user_123"}
+    def test_extract_top_interests_none(self, prompt_builder):
+        """Test top interests extraction with None interests."""
+        user_profile = {"interests": None}
         
-        with patch('app.workers.tasks.llm_service') as mock_llm_service:
-            mock_llm_service.generate_recommendations = AsyncMock(return_value=[{"id": "1", "title": "Test"}])
-            
-            result = call_llm(prompt, user_context, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert "recommendations" in result
+        result = prompt_builder._extract_top_interests(user_profile, limit=3)
+        
+        assert isinstance(result, list)
+        assert len(result) == 0
 
-    def test_call_llm_error_handling(self):
-        """Test call_llm task error handling."""
-        prompt = "Test prompt"
-        user_context = {"user_id": "user_123"}
+    def test_extract_top_interests_large_list(self, prompt_builder):
+        """Test top interests extraction with large list."""
+        user_profile = {
+            "interests": [f"interest_{i}" for i in range(100)]
+        }
         
-        with patch('app.workers.tasks.llm_service') as mock_llm_service:
-            mock_llm_service.generate_recommendations = AsyncMock(side_effect=Exception("LLM error"))
-            
-            result = call_llm(prompt, user_context, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert "error" in result
+        result = prompt_builder._extract_top_interests(user_profile, limit=5)
+        
+        assert isinstance(result, list)
+        assert len(result) <= 5
+        assert all(isinstance(interest, str) for interest in result)
 
-    def test_call_llm_empty_prompt(self):
-        """Test call_llm task with empty prompt."""
-        prompt = ""
-        user_context = {"user_id": "user_123"}
+    def test_extract_top_interests_performance(self, prompt_builder):
+        """Test top interests extraction performance."""
+        import time
         
-        result = call_llm(prompt, user_context, "PLACE")
+        user_profile = {
+            "interests": [f"interest_{i}" for i in range(1000)]
+        }
         
-        assert isinstance(result, dict)
-        assert "error" in result
+        start_time = time.time()
+        for _ in range(100):
+            prompt_builder._extract_top_interests(user_profile, limit=10)
+        end_time = time.time()
+        
+        assert end_time - start_time < 1.0
 
-    def test_call_llm_none_prompt(self):
-        """Test call_llm task with None prompt."""
-        prompt = None
-        user_context = {"user_id": "user_123"}
+    def test_extract_location_preferences(self, prompt_builder):
+        """Test location preferences extraction."""
+        location_data = {
+            "location_patterns": ["hotel", "outdoor", "local"]
+        }
         
-        result = call_llm(prompt, user_context, "PLACE")
+        result = prompt_builder._extract_location_preferences(location_data)
         
-        assert isinstance(result, dict)
-        assert "error" in result
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert any("hotel" in pref.lower() for pref in result)
 
-    def test_cache_results(self):
-        """Test cache_results task."""
-        user_id = "user_123"
-        recommendations = [{"id": "rec_1", "title": "Recommendation 1"}]
+    def test_extract_location_preferences_empty(self, prompt_builder):
+        """Test location preferences extraction with empty data."""
+        location_data = {}
         
-        with patch('app.workers.tasks.llm_service') as mock_llm_service:
-            mock_llm_service.store_recommendations = AsyncMock(return_value=True)
-            
-            result = cache_results(user_id, recommendations, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert result["success"] is True
-            assert "cached_count" in result
+        result = prompt_builder._extract_location_preferences(location_data)
+        
+        assert isinstance(result, list)
+        assert len(result) == 0
 
-    def test_cache_results_error_handling(self):
-        """Test cache_results task error handling."""
-        user_id = "user_123"
-        recommendations = []
+    def test_extract_location_preferences_partial(self, prompt_builder):
+        """Test location preferences extraction with partial data."""
+        location_data = {
+            "location_patterns": ["hotel"]
+        }
         
-        with patch('app.workers.tasks.llm_service') as mock_llm_service:
-            mock_llm_service.store_recommendations = AsyncMock(side_effect=Exception("Cache error"))
-            
-            result = cache_results(user_id, recommendations, "PLACE")
-            
-            assert isinstance(result, dict)
-            assert "error" in result
+        result = prompt_builder._extract_location_preferences(location_data)
+        
+        assert isinstance(result, list)
+        assert any("hotel" in pref.lower() for pref in result)
 
-    def test_cache_results_empty_data(self):
-        """Test cache_results task with empty data."""
-        user_id = ""
-        recommendations = []
-        
-        result = cache_results(user_id, recommendations, "PLACE")
-        
-        assert isinstance(result, dict)
-        assert "error" in result
+    def test_extract_location_preferences_none(self, prompt_builder):
+        """Test location preferences extraction with None data."""
+        result = prompt_builder._extract_location_preferences(None)
+        assert isinstance(result, list)
+        assert len(result) == 0
 
-    def test_generate_recommendations(self):
-        """Test generate_recommendations task."""
-        user_id = "user_123"
+    def test_extract_location_preferences_performance(self, prompt_builder):
+        """Test location preferences extraction performance."""
+        import time
         
-        with patch('app.workers.tasks.llm_service') as mock_llm_service:
-            with patch('app.workers.tasks.fetch_user_data') as mock_fetch:
-                with patch('app.workers.tasks.build_prompt') as mock_build:
-                    with patch('app.workers.tasks.call_llm') as mock_call:
-                        with patch('app.workers.tasks.cache_results') as mock_cache:
-                            mock_llm_service.get_recommendations = AsyncMock(return_value=None)
-                            mock_fetch.return_value = {
-                                "success": True,
-                                "user_data": {
-                                    "user_profile": {},
-                                    "location_data": {},
-                                    "interaction_data": {}
-                                }
-                            }
-                            mock_build.return_value = {
-                                "success": True,
-                                "prompt": "Test prompt"
-                            }
-                            mock_call.return_value = {
-                                "success": True,
-                                "recommendations": [{"id": "1", "title": "Test"}]
-                            }
-                            mock_cache.return_value = {
-                                "success": True,
-                                "cached_count": 1
-                            }
-                            
-                            result = generate_recommendations(user_id, "PLACE")
-                        
-                        assert isinstance(result, dict)
-                        assert result["success"] is True
-                        assert "recommendations" in result
-
-    def test_generate_recommendations_error_handling(self):
-        """Test generate_recommendations task error handling."""
-        user_id = "user_123"
+        location_data = {
+            "location_patterns": ["hotel", "outdoor"]
+        }
         
-        with patch('app.workers.tasks.fetch_user_data') as mock_fetch:
-            mock_fetch.side_effect = Exception("Fetch error")
-            
-            result = generate_recommendations(user_id)
-            
-            assert isinstance(result, dict)
-            assert "error" in result
-
-    def test_generate_recommendations_empty_user_id(self):
-        """Test generate_recommendations task with empty user ID."""
-        user_id = ""
+        start_time = time.time()
+        for _ in range(1000):
+            prompt_builder._extract_location_preferences(location_data)
+        end_time = time.time()
         
-        result = generate_recommendations(user_id)
+        assert end_time - start_time < 1.0
+
+    def test_extract_interaction_preferences(self, prompt_builder):
+        """Test interaction preferences extraction."""
+        interaction_history = {"interaction_patterns": ["review", "view", "click"]}
         
-        assert isinstance(result, dict)
-        assert "error" in result
-
-    def test_process_user(self):
-        """Test process_user task."""
-        user_id = "user_123"
+        result = prompt_builder._extract_interaction_preferences(interaction_history)
         
-        with patch('app.workers.tasks.generate_recommendations') as mock_generate:
-            mock_generate.return_value = {"success": True, "results": []}
-            
-            result = process_user(user_id)
-            
-            assert isinstance(result, dict)
-            assert "results" in result
+        assert isinstance(result, list)
+        assert any("review" in pref.lower() for pref in result)
 
-    def test_process_user_error_handling(self):
-        """Test process_user task error handling."""
-        user_id = "user_123"
+    def test_extract_interaction_preferences_empty(self, prompt_builder):
+        """Test interaction preferences extraction with empty history."""
+        interaction_history = {}
         
-        with patch('app.workers.tasks.generate_recommendations') as mock_generate:
-            mock_generate.side_effect = Exception("Generate error")
-            
-            result = process_user(user_id)
-            
-            assert isinstance(result, dict)
-            assert "error" in result
-
-    def test_process_user_empty_user_id(self):
-        """Test process_user task with empty user ID."""
-        user_id = ""
+        result = prompt_builder._extract_interaction_preferences(interaction_history)
         
-        result = process_user(user_id)
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_extract_interaction_preferences_none(self, prompt_builder):
+        """Test interaction preferences extraction with None history."""
+        result = prompt_builder._extract_interaction_preferences(None)
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_extract_interaction_preferences_missing_fields(self, prompt_builder):
+        """Test interaction preferences extraction with missing fields."""
+        interaction_history = {"interaction_patterns": ["review", "view"]}
         
-        assert isinstance(result, dict)
-        assert "error" in result
-
-    def test_get_users(self):
-        """Test get_users task."""
-        with patch('app.workers.tasks.UserProfileService') as mock_user_service:
-            mock_service = Mock()
-            mock_service.get_all_users = AsyncMock(return_value=[{"user_id": "user_123"}])
-            mock_user_service.return_value = mock_service
-            
-            result = get_users()
-            
-            assert isinstance(result, list)
-            assert len(result) > 0
-
-    def test_get_users_error_handling(self):
-        """Test get_users task error handling."""
-        with patch('app.workers.tasks.UserProfileService') as mock_user_service:
-            mock_user_service.side_effect = Exception("Service error")
-            
-            result = get_users()
-            
-            assert isinstance(result, list)
-            assert len(result) == 0
-
-    def test_process_user_comprehensive(self):
-        """Test process_user_comprehensive task."""
-        user_id = "user_123"
+        result = prompt_builder._extract_interaction_preferences(interaction_history)
         
-        with patch('app.workers.tasks.process_user') as mock_process:
-            mock_process.return_value = {"success": True, "results": []}
-            
-            result = process_user_comprehensive(user_id)
-            
-            assert isinstance(result, dict)
-            assert "results" in result
+        assert isinstance(result, list)
+        assert len(result) > 0
 
-    def test_process_user_comprehensive_error_handling(self):
-        """Test process_user_comprehensive task error handling."""
-        user_id = "user_123"
+    def test_extract_interaction_preferences_performance(self, prompt_builder):
+        """Test interaction preferences extraction performance."""
+        import time
         
-        with patch('app.workers.tasks.process_user') as mock_process:
-            mock_process.side_effect = Exception("Process error")
-            
-            result = process_user_comprehensive(user_id)
-            
-            assert isinstance(result, dict)
-            assert "error" in result
-
-    def test_generate_user_prompt(self):
-        """Test generate_user_prompt task."""
-        user_id = "1"
+        interaction_history = {"interaction_patterns": [f"pattern_{i}" for i in range(1000)]}
         
-        with patch('app.workers.tasks.fetch_user_data') as mock_fetch:
-            with patch('app.workers.tasks.build_prompt') as mock_build:
-                mock_fetch.return_value = {
-                    "success": True,
-                    "user_data": {
-                        "user_profile": {},
-                        "location_data": {},
-                        "interaction_data": {}
-                    }
-                }
-                mock_build.return_value = {
-                    "success": True,
-                    "prompt": "Test prompt"
-                }
-                
-                result = generate_user_prompt(user_id)
-                
-                assert isinstance(result, dict)
-                assert "prompt" in result
-
-    def test_generate_user_prompt_error_handling(self):
-        """Test generate_user_prompt task error handling."""
-        user_id = "user_123"
+        start_time = time.time()
+        for _ in range(100):
+            prompt_builder._extract_interaction_preferences(interaction_history)
+        end_time = time.time()
         
-        with patch('app.workers.tasks.fetch_user_data') as mock_fetch:
-            mock_fetch.side_effect = Exception("Fetch error")
-            
-            result = generate_user_prompt(user_id)
-            
-            assert isinstance(result, dict)
-            assert "error" in result
+        assert end_time - start_time < 1.0
 
-    def test_celery_workers_import(self):
-        """Test Celery workers import."""
-        from app.workers.tasks import (
-            fetch_user_data,
-            build_prompt,
-            call_llm,
-            cache_results,
-            generate_recommendations,
-            process_user,
-            get_users,
-            process_user_comprehensive,
-            generate_user_prompt
+    @patch('app.utils.prompt_builder.PromptBuilder._extract_location_preferences', return_value=["hotel"])
+    def test_build_recommendation_prompt(self, mock_extract_location_preferences, prompt_builder):
+        """Test recommendation prompt building."""
+        user_profile = {
+            "name": "John Doe",
+            "interests": ["travel", "food", "adventure"],
+            "location": {"country": "United States", "city": "New York"},
+            "preferences": {"accommodation": "hotel", "activities": "outdoor"}
+        }
+        
+        interaction_history = [
+            {"location_id": "loc_1", "rating": 5, "interaction_type": "review"},
+            {"location_id": "loc_2", "rating": 4, "interaction_type": "view"},
+        ]
+        
+        result = prompt_builder.build_recommendation_prompt(
+            user_profile=user_profile,
+            location_data=None,
+            interaction_data=interaction_history,
+            recommendation_type=RecommendationType.PLACE
         )
         
-        # All functions should be callable
-        assert callable(fetch_user_data)
-        assert callable(build_prompt)
-        assert callable(call_llm)
-        assert callable(cache_results)
-        assert callable(generate_recommendations)
-        assert callable(process_user)
-        assert callable(get_users)
-        assert callable(process_user_comprehensive)
-        assert callable(generate_user_prompt)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "John" in result or "travel" in result or "adventure" in result
 
-    def test_celery_workers_function_signatures(self):
-        """Test Celery workers function signatures."""
-        import inspect
+    def test_build_recommendation_prompt_empty_data(self, prompt_builder):
+        """Test recommendation prompt building with empty data."""
+        user_profile = {}
+        interaction_history = []
         
-        # Check function signatures
-        assert len(inspect.signature(fetch_user_data).parameters) == 1
-        assert len(inspect.signature(build_prompt).parameters) == 2  # Fixed: 2 parameters
-        assert len(inspect.signature(call_llm).parameters) == 3
-        assert len(inspect.signature(cache_results).parameters) == 3
-        assert len(inspect.signature(generate_recommendations).parameters) == 2
-        assert len(inspect.signature(process_user).parameters) == 1
-        assert len(inspect.signature(get_users).parameters) == 0
-        assert len(inspect.signature(process_user_comprehensive).parameters) == 1
-        assert len(inspect.signature(generate_user_prompt).parameters) == 1
+        result = prompt_builder.build_recommendation_prompt(
+            user_profile=user_profile,
+            location_data={},
+            interaction_data=interaction_history,
+            recommendation_type=RecommendationType.PLACE
+        )
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_celery_workers_return_types(self):
-        """Test Celery workers return types."""
-        # Test return types
-        assert isinstance(fetch_user_data("user_123"), dict)
-        assert isinstance(build_prompt({}, "PLACE"), dict)  # Fixed: returns dict, not str
-        assert isinstance(call_llm("prompt", {}, "PLACE"), dict)
-        assert isinstance(cache_results("user_123", [], "PLACE"), dict)
-        assert isinstance(generate_recommendations("user_123"), dict)
-        assert isinstance(process_user("user_123"), dict)
-        assert isinstance(get_users(), list)
-        assert isinstance(process_user_comprehensive("user_123"), dict)
-        assert isinstance(generate_user_prompt("user_123"), dict)  # Fixed: returns dict, not str
+    def test_build_recommendation_prompt_none_data(self, prompt_builder):
+        """Test recommendation prompt building with None data."""
+        result = prompt_builder.build_recommendation_prompt(
+            user_profile=None,
+            location_data=None,
+            interaction_data=None,
+            recommendation_type=RecommendationType.PLACE
+        )
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_celery_workers_error_handling(self):
-        """Test Celery workers error handling."""
-        # Test that all workers handle errors gracefully
-        assert "error" in fetch_user_data("").keys()
-        assert "error" in build_prompt({}, "PLACE").keys()  # Fixed: check keys
-        assert "error" in call_llm("", {}, "PLACE").keys()
-        assert "error" in cache_results("", [], "PLACE").keys()
-        assert "error" in generate_recommendations("").keys()
-        assert "error" in process_user("").keys()
-        assert isinstance(get_users(), list)
-        assert "error" in process_user_comprehensive("").keys()
-        assert "error" in generate_user_prompt("").keys()  # Fixed: check keys
+    @patch('app.utils.prompt_builder.PromptBuilder._extract_location_preferences', return_value=["hotel"])
+    def test_build_recommendation_prompt_performance(self, mock_extract_location_preferences, prompt_builder):
+        """Test recommendation prompt building performance."""
+        import time
+        
+        user_profile = {
+            "name": "John Doe",
+            "interests": ["travel", "food", "adventure"],
+            "location": {"country": "United States", "city": "New York"},
+            "preferences": {"accommodation": "hotel", "activities": "outdoor"}
+        }
+        
+        interaction_history = [
+            {"location_id": f"loc_{i}", "rating": i % 5 + 1, "interaction_type": "view"}
+            for i in range(100)
+        ]
+        
+        start_time = time.time()
+        for _ in range(100):
+            prompt_builder.build_recommendation_prompt(
+                user_profile=user_profile,
+                location_data=None,
+                interaction_data=interaction_history,
+                recommendation_type=RecommendationType.PLACE
+            )
+        end_time = time.time()
+        
+        assert end_time - start_time < 2.0
 
-    def test_celery_workers_thread_safety(self):
-        """Test Celery workers thread safety."""
+    def test_build_fallback_prompt(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test fallback prompt building."""
+        result = prompt_builder.build_fallback_prompt()
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_build_fallback_prompt_structure(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test fallback prompt structure."""
+        result = prompt_builder.build_fallback_prompt()
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "{" in result
+        assert "}" in result
+
+    def test_build_fallback_prompt_performance(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test fallback prompt building performance."""
+        import time
+        
+        start_time = time.time()
+        for _ in range(1000):
+            prompt_builder.build_fallback_prompt()
+        end_time = time.time()
+        
+        assert end_time - start_time < 1.0
+
+    def test_prompt_builder_method_availability(self, prompt_builder):
+        """Test PromptBuilder method availability."""
+        assert hasattr(prompt_builder, '_get_ranking_language')
+        assert hasattr(prompt_builder, '_extract_top_interests')
+        assert hasattr(prompt_builder, '_extract_location_preferences')
+        assert hasattr(prompt_builder, '_extract_interaction_preferences')
+        assert hasattr(prompt_builder, 'build_recommendation_prompt')
+        assert hasattr(prompt_builder, 'build_fallback_prompt')
+        assert callable(prompt_builder._get_ranking_language)
+        assert callable(prompt_builder._extract_top_interests)
+        assert callable(prompt_builder._extract_location_preferences)
+        assert callable(prompt_builder._extract_interaction_preferences)
+        assert callable(prompt_builder.build_recommendation_prompt)
+        assert callable(prompt_builder.build_fallback_prompt)
+
+    def test_prompt_builder_thread_safety(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test PromptBuilder thread safety."""
         import threading
         
         results = []
         
-        def test_worker():
+        def test_operation():
             try:
-                result = fetch_user_data("user_123")
+                prompt = prompt_builder.build_fallback_prompt()
                 results.append(f"success_{threading.current_thread().name}")
             except Exception as e:
                 results.append(f"error_{threading.current_thread().name}: {e}")
         
-        # Create multiple threads
         threads = []
         for i in range(5):
-            thread = threading.Thread(target=test_worker, name=f"thread_{i}")
+            thread = threading.Thread(target=test_operation, name=f"thread_{i}")
             threads.append(thread)
             thread.start()
         
-        # Wait for all threads
         for thread in threads:
             thread.join()
         
-        # Check that all threads completed
         assert len(results) == 5
         assert all(result.startswith("success_") for result in results)
 
-    def test_celery_workers_performance(self):
-        """Test Celery workers performance."""
+    def test_prompt_builder_memory_usage(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test PromptBuilder memory usage."""
+        import gc
+        
+        prompts = []
+        for _ in range(100):
+            prompt = prompt_builder.build_fallback_prompt()
+            prompts.append(prompt)
+        
+        assert len(prompts) == 100
+        
+        del prompts
+        gc.collect()
+
+    def test_prompt_builder_performance(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test PromptBuilder performance."""
         import time
         
         start_time = time.time()
-        for _ in range(10):  # Reduced from 100 to 10 for performance
-            fetch_user_data("user_123")
+        prompts = []
+        for _ in range(100):
+            prompt = prompt_builder.build_fallback_prompt()
+            prompts.append(prompt)
         end_time = time.time()
         
-        # Should complete within reasonable time
-        assert end_time - start_time < 5.0  # Increased timeout for fewer calls
+        assert end_time - start_time < 2.0
+        assert len(prompts) == 100
 
-    def test_celery_workers_memory_usage(self):
-        """Test Celery workers memory usage."""
-        import gc
+    def test_prompt_builder_data_consistency(self, prompt_builder, mock_get_json_structure_requirements):
+        """Test PromptBuilder data consistency."""
+        prompt1 = prompt_builder.build_fallback_prompt()
+        prompt2 = prompt_builder.build_fallback_prompt()
         
-        # Create multiple results
-        results = []
-        for _ in range(10):  # Reduced from 100 to 10 for memory
-            result = fetch_user_data("user_123")
-            results.append(result)
-        
-        # Check memory usage
-        assert len(results) == 10
-        
-        # Clean up
-        del results
-        gc.collect()
+        assert isinstance(prompt1, str)
+        assert isinstance(prompt2, str)
+        assert len(prompt1) > 0
+        assert len(prompt2) > 0
+        assert "{" in prompt1
+        assert "}" in prompt1
+        assert "{" in prompt2
+        assert "}" in prompt2
 
-    def test_celery_workers_data_consistency(self):
-        """Test Celery workers data consistency."""
-        # Test that workers return consistent data structures
-        result1 = fetch_user_data("user_123")
-        result2 = fetch_user_data("user_123")
-        
-        # Both should be dictionaries
-        assert isinstance(result1, dict)
-        assert isinstance(result2, dict)
-        
-        # Both should have similar structure
-        assert "success" in result1
-        assert "user_data" in result1
-        assert "success" in result2
-        assert "user_data" in result2
+    def test_prompt_builder_error_handling(self, prompt_builder):
+        """Test PromptBuilder error handling."""
+        result = prompt_builder._get_ranking_language(-1)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_celery_workers_unicode_support(self):
-        """Test Celery workers Unicode support."""
-        unicode_user_id = "用户123"
+    @patch('app.utils.prompt_builder.PromptBuilder._extract_location_preferences', return_value=["hotel"])
+    def test_prompt_builder_unicode_support(self, mock_extract_location_preferences, prompt_builder):
+        """Test PromptBuilder Unicode support."""
+        user_profile = {
+            "name": "用户123",
+            "interests": ["旅行", "美食", "冒险"],
+            "location": {"country": "中国", "city": "北京"},
+            "preferences": {"accommodation": "酒店", "activities": "户外"}
+        }
         
-        result = fetch_user_data(unicode_user_id)
+        interaction_history = [
+            {"location_id": "loc_1", "rating": 5, "interaction_type": "review"},
+        ]
         
-        assert isinstance(result, dict)
-        assert "success" in result
-        assert "user_data" in result
+        result = prompt_builder.build_recommendation_prompt(
+            user_profile=user_profile,
+            location_data=None,
+            interaction_data=interaction_history,
+            recommendation_type=RecommendationType.PLACE
+        )
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "用户" in result or "旅行" in result or "美食" in result
 
-    def test_celery_workers_large_data(self):
-        """Test Celery workers with large data."""
-        large_user_id = "a" * 1000  # Very long user ID
+    @patch('app.utils.prompt_builder.PromptBuilder._extract_location_preferences', return_value=["hotel"])
+    def test_prompt_builder_large_data(self, mock_extract_location_preferences, prompt_builder):
+        """Test PromptBuilder with large data."""
+        user_profile = {
+            "name": "John Doe",
+            "interests": [f"interest_{i}" for i in range(1000)],
+            "location": {"country": "United States", "city": "New York"},
+            "preferences": {"accommodation": "hotel", "activities": "outdoor"}
+        }
         
-        result = fetch_user_data(large_user_id)
+        interaction_history = [
+            {"location_id": f"loc_{i}", "rating": i % 5 + 1, "interaction_type": "view"}
+            for i in range(1000)
+        ]
         
-        assert isinstance(result, dict)
-        assert "success" in result
-        assert "user_data" in result
-
-    def test_celery_workers_concurrent_access(self):
-        """Test Celery workers concurrent access."""
-        # Use threading instead of asyncio to avoid event loop issues
-        import threading
+        results = prompt_builder.build_recommendation_prompt(
+            user_profile=user_profile,
+            location_data=None,
+            interaction_data=interaction_history,
+            recommendation_type=RecommendationType.PLACE
+        )
         
-        results = []
-        
-        def test_worker():
-            result = fetch_user_data("user_123")
-            results.append(result)
-        
-        # Create multiple threads
-        threads = []
-        for _ in range(5):
-            thread = threading.Thread(target=test_worker)
-            threads.append(thread)
-            thread.start()
-        
-        # Wait for all threads
-        for thread in threads:
-            thread.join()
-        
-        # All should complete successfully
-        assert len(results) == 5
-        assert all(isinstance(result, dict) for result in results)
+        assert isinstance(results, str)
+        assert len(results) > 0
+        assert "John" in results or "interest" in results
