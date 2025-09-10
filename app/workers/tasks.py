@@ -149,9 +149,8 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
             recommendations = loop.run_until_complete(
                 llm_service.generate_recommendations(
                     prompt=prompt,
-                    user_context=user_context,
-                    recommendation_type=recommendation_type,
-                    max_results=10
+                    user_id=user_context.get("user_id"),
+                    current_city=user_context.get("current_city", "Barcelona")
                 )
             )
             
@@ -705,7 +704,12 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
             print(f"🤖 GENERATING RECOMMENDATIONS:")
             print(f"   🔄 Sending prompt to LLM service...")
             
-            llm_response = llm_service.generate_recommendations(generated_prompt, user_id)
+            # Use asyncio to call the async method
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            llm_response = loop.run_until_complete(
+                llm_service.generate_recommendations(generated_prompt, user_id)
+            )
             
             if llm_response.get("success"):
                 print(f"   ✅ Recommendations generated successfully!")

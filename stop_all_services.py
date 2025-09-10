@@ -24,8 +24,8 @@ original_cwd = os.getcwd()
 os.chdir(app_dir)
 
 try:
-    from core.config import settings
-    from core.logging import get_logger
+    from app.core.config import settings
+    from app.core.logging import get_logger
 finally:
     # Restore original working directory
     os.chdir(original_cwd)

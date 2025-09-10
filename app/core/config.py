@@ -69,6 +69,14 @@ class Settings(BaseSettings):
         default="http://localhost:8000", 
         env="PREFETCH_SERVICE_URL"
     )
+    recommendation_api_url: str = Field(
+        default="http://localhost:8000",
+        env="RECOMMENDATION_API_URL"
+    )
+    recommendation_api_provider: str = Field(
+        default="groq",
+        env="RECOMMENDATION_API_PROVIDER"
+    )
     
     # Scheduling
     recommendation_refresh_interval_minutes: int = Field(

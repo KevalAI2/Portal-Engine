@@ -11,6 +11,8 @@ from app.services.llm_service import LLMService
 from app.workers.celery_app import celery_app
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.models.schemas import safe_model_dump
+from fastapi import Depends, HTTPException
 
 logger = get_logger("dependencies")
 
@@ -91,6 +93,18 @@ def get_cache_service():
 
 
 # Optional service dependencies for graceful degradation
+async def get_user_profile(user_id: str, service: UserProfileService = Depends(get_user_profile_service)):
+    """Get user profile with recursion protection."""
+    try:
+        profile = await service.get_user_profile(user_id)
+        if profile:
+            # Convert to simple dict to avoid recursion
+            return safe_model_dump(profile)
+        return None
+    except Exception as e:
+        logger.error(f"Error getting user profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving user profile")
+
 def get_optional_user_profile_service() -> Optional[UserProfileService]:
     """Returns UserProfileService or None if unavailable (for graceful degradation)."""
     try:
@@ -98,7 +112,6 @@ def get_optional_user_profile_service() -> Optional[UserProfileService]:
     except Exception as e:
         logger.warning(f"UserProfileService unavailable: {e}")
         return None
-
 
 def get_optional_lie_service() -> Optional[LIEService]:
     """Returns LIEService or None if unavailable (for graceful degradation)."""
