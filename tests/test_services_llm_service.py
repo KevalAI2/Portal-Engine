@@ -21,13 +21,13 @@ class TestLLMService:
             mock_settings.recommendation_api_url = "http://test.example.com"
             mock_settings.recommendation_api_provider = "test_provider"
             mock_settings.redis_host = "localhost"
-            return LLMService()
+            return LLMService(timeout=120)
 
     def test_llm_service_initialization(self, llm_service):
         """Test LLMService initialization."""
         assert llm_service is not None
         assert hasattr(llm_service, 'timeout')
-        assert llm_service.timeout == 30
+        assert llm_service.timeout == 120
 
     def test_setup_demo_data(self, llm_service):
         """Test demo data setup."""

@@ -16,7 +16,7 @@ logger = get_logger("llm_service")
 class LLMService:
     """Service to generate recommendations from prompts and store in Redis"""
     
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: int = 120):
         self.timeout = timeout
         self.redis_client = redis.Redis(
             host=settings.redis_host,
@@ -518,4 +518,4 @@ class LLMService:
             logger.error(f"Error clearing recommendations: {str(e)}")
 
 
-llm_service = LLMService()
+llm_service = LLMService(timeout=120)

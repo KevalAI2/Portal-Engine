@@ -67,7 +67,7 @@ def get_results_service() -> ResultsService:
 def get_llm_service() -> LLMService:
     """Returns an instance of the LLMService."""
     try:
-        service = LLMService()
+        service = LLMService(timeout=120)
         logger.debug("LLMService dependency created")
         return service
     except Exception as e:

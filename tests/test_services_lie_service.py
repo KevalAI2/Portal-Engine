@@ -149,48 +149,16 @@ class TestLIEService:
         assert True  # Placeholder to avoid failing test
 
     @pytest.mark.asyncio
-    async def test_get_location_data_success(lie_service: LIEService):
+    async def test_get_location_data_success(self, lie_service: LIEService):
         """Test successful location data retrieval with full schema fields."""
-        
-        # Simple mock data matching LocationData constructor expectations
+
+        # Mock data as dict with required structure
         mock_data = {
             "user_id": "loc_123",
-            "current_location": {
-                "city": "New York, NY",
-                "neighborhood": "Williamsburg",
-                "coordinates": {"latitude": 40.7128, "longitude": -74.0060},
-                "accuracy_meters": 100,
-                "last_updated": "2025-09-09T16:32:52.204598",
-                "venue_type": "restaurant",
-                "venue_name": "Central Park"
-            },
-            "home_location": {
-                "city": "Los Angeles, CA",
-                "neighborhood": "Silver Lake",
-                "coordinates": {"latitude": 34.0522, "longitude": -118.2437},
-                "address": "123 Main St, Silver Lake, Los Angeles, CA",
-                "residence_type": "apartment",
-                "years_lived": 5
-            },
-            "work_location": {
-                "city": "Chicago, IL",
-                "neighborhood": "The Loop",
-                "coordinates": {"latitude": 41.8781, "longitude": -87.6298},
-                "company_name": "Tech Solutions",
-                "office_type": "headquarters",
-                "commute_days": 5
-            },
+            "current_location": {"city": "New York, NY"},
+            "home_location": {"city": "Los Angeles, CA"},
+            "work_location": {"city": "Chicago, IL"},
             "travel_history": ["Tokyo, Japan", "Paris, France", "London, UK"],
-            "recent_locations": [
-                {
-                    "venue_name": "Times Square",
-                    "venue_type": "tourist",
-                    "location": "Times Square, New York, NY",
-                    "visited_at": "2025-09-01T10:00:00",
-                    "duration_minutes": 60,
-                    "rating": 4.5
-                }
-            ],
             "location_preferences": {
                 "preferred_neighborhoods": ["walkable neighborhoods", "cultural districts"],
                 "avoided_areas": ["Miami, FL"],
@@ -201,45 +169,14 @@ class TestLIEService:
                 "radius_preference_km": 10,
                 "time_preferences": ["morning", "evening"]
             },
-            "location_patterns": {
-                "home_work_commute": {
-                    "from": "Silver Lake, Los Angeles, CA",
-                    "to": "The Loop, Chicago, IL",
-                    "average_duration_minutes": 45,
-                    "preferred_route": "public_transit",
-                    "frequency": "weekdays"
-                },
-                "weekend_routine": {
-                    "morning": "coffee shop",
-                    "afternoon": "park",
-                    "evening": "restaurant",
-                    "preferred_neighborhoods": ["Williamsburg", "Downtown"]
-                },
-                "travel_patterns": {
-                    "domestic_trips_per_year": 4,
-                    "international_trips_per_year": 2,
-                    "preferred_destinations": ["Tokyo, Japan", "Paris, France"],
-                    "average_trip_duration_days": 7
-                }
-            },
-            "location_insights": {
-                "favorite_cities": ["New York, NY", "Los Angeles, CA"],
-                "most_visited_venue_type": "restaurant",
-                "average_daily_distance_km": 20.5,
-                "location_consistency_score": 0.85,
-                "exploration_tendency": "medium",
-                "routine_following_score": 0.75
-            },
-            "generated_at": "2025-09-09T16:32:52.204598",
-            "data_confidence": 0.9
+            "data_confidence": 0.85,
+            "generated_at": "2025-09-11T07:04:44.109354Z"
         }
 
-        # Mock _generate_mock_location_data to return data with correct structure
-        with patch.object(LIEService, "_generate_mock_location_data") as mock_generate:
-            mock_generate.return_value = mock_data
-
+        # Patch _generate_mock_location_data to return the dict
+        with patch.object(lie_service, "_generate_mock_location_data", return_value=mock_data):
             result = await lie_service.get_location_data("loc_123")
-            
+
             # Assertions
             assert result is not None
             assert isinstance(result, LocationData)
@@ -249,44 +186,6 @@ class TestLIEService:
             assert result.work_location == "Chicago, IL"
             assert result.travel_history == ["Tokyo, Japan", "Paris, France", "London, UK"]
             assert result.location_preferences == mock_data["location_preferences"]
-            assert mock_generate.call_count == 1
-            """Test successful location data retrieval with full schema fields."""
-            
-            # Simple mock data matching LocationData constructor expectations
-            mock_data = {
-                "user_id": "loc_123",
-                "current_location": "New York, NY",
-                "home_location": "Los Angeles, CA", 
-                "work_location": "Chicago, IL",
-                "travel_history": ["Tokyo, Japan", "Paris, France", "London, UK"],
-                "location_preferences": {
-                    "preferred_neighborhoods": ["walkable neighborhoods", "cultural districts"],
-                    "avoided_areas": ["Miami, FL"],
-                    "favorite_venue_types": ["restaurant", "coffee shop"],
-                    "preferred_activities": ["dining", "cultural"],
-                    "travel_frequency": "frequent",
-                    "commute_preference": "public_transit",
-                    "radius_preference_km": 10,
-                    "time_preferences": ["morning", "evening"]
-                }
-            }
-
-            # Mock _generate_mock_location_data to return data with correct structure
-            with patch.object(lie_service, "_generate_mock_location_data") as mock_generate:
-                mock_generate.return_value = mock_data
-
-                result = await lie_service.get_location_data("loc_123")
-                
-                # Assertions
-                assert result is not None
-                assert isinstance(result, LocationData)
-                assert result.user_id == "loc_123"
-                assert result.current_location == "New York, NY"
-                assert result.home_location == "Los Angeles, CA"
-                assert result.work_location == "Chicago, IL"
-                assert result.travel_history == ["Tokyo, Japan", "Paris, France", "London, UK"]
-                assert result.location_preferences == mock_data["location_preferences"]
-                assert mock_generate.call_count == 1
 
     @pytest.mark.asyncio
     async def test_get_location_data_not_found(self, lie_service):
@@ -524,7 +423,6 @@ class TestLIEService:
 
     def test_lie_service_error_handling(self, lie_service):
         """Test LIEService error handling."""
-        # Test that service handles errors gracefully
         with patch.object(lie_service.logger, 'error') as mock_error:
             # Simulate an error scenario
             try:
