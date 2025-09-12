@@ -8,7 +8,8 @@ from app.api.dependencies import (
     get_lie_service,
     get_cis_service,
     get_results_service,
-    get_celery_app
+    get_celery_app,
+    get_llm_service
 )
 
 
@@ -26,7 +27,131 @@ class TestAPIDependencies:
             
             assert result == mock_service
             mock_service_class.assert_called_once()
+    def test_get_cache_service(self):
+        """Test cache service dependency."""
+        from app.api.dependencies import get_cache_service
+        
+        result = get_cache_service()
+        
+        assert result is None
+    @pytest.mark.asyncio
+    async def test_get_user_profile_success(self):
+        """Test get_user_profile dependency success case."""
+        from app.api.dependencies import get_user_profile
+        
+        mock_profile = {"user_id": "123", "name": "Test User"}
+        mock_service = AsyncMock()
+        mock_service.get_user_profile.return_value = mock_profile
+        
+        # Mock the service parameter directly since get_user_profile uses Depends
+        with patch('app.api.dependencies.safe_model_dump', return_value=mock_profile) as mock_safe_dump:
+            result = await get_user_profile(user_id="123", service=mock_service)
+            
+            assert result == mock_profile
+            mock_service.get_user_profile.assert_awaited_once_with("123")
+            mock_safe_dump.assert_called_once_with(mock_profile)
 
+    @pytest.mark.asyncio
+    async def test_get_user_profile_none(self):
+        """Test get_user_profile dependency when profile is None."""
+        from app.api.dependencies import get_user_profile
+        
+        mock_service = AsyncMock()
+        mock_service.get_user_profile.return_value = None
+        
+        # Mock the service parameter directly since get_user_profile uses Depends
+        result = await get_user_profile(user_id="123", service=mock_service)
+        
+        assert result is None
+        mock_service.get_user_profile.assert_awaited_once_with("123")
+
+    @pytest.mark.asyncio
+    async def test_get_user_profile_error(self):
+        """Test get_user_profile dependency error handling."""
+        from app.api.dependencies import get_user_profile
+        from fastapi import HTTPException
+        
+        mock_service = AsyncMock()
+        mock_service.get_user_profile.side_effect = Exception("Profile fetch failed")
+        
+        # Mock the service parameter directly since get_user_profile uses Depends
+        with patch('app.api.dependencies.logger') as mock_logger:
+            with pytest.raises(HTTPException) as exc_info:
+                await get_user_profile(user_id="123", service=mock_service)
+            
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Error retrieving user profile"
+            mock_logger.error.assert_called_once_with("Error getting user profile: Profile fetch failed")
+
+    def test_get_optional_user_profile_service_success(self):
+        """Test optional user profile service dependency success case."""
+        from app.api.dependencies import get_optional_user_profile_service
+        mock_service = Mock()
+        
+        with patch('app.api.dependencies.get_user_profile_service', return_value=mock_service):
+            result = get_optional_user_profile_service()
+            
+            assert result == mock_service
+
+    def test_get_optional_user_profile_service_failure(self):
+        """Test optional user profile service dependency failure case."""
+        from app.api.dependencies import get_optional_user_profile_service
+        
+        with patch('app.api.dependencies.get_user_profile_service') as mock_get_service:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_get_service.side_effect = Exception("Service unavailable")
+                
+                result = get_optional_user_profile_service()
+                
+                assert result is None
+                mock_logger.warning.assert_called_once_with("UserProfileService unavailable: Service unavailable")
+
+    def test_get_optional_lie_service_success(self):
+        """Test optional LIE service dependency success case."""
+        from app.api.dependencies import get_optional_lie_service
+        mock_service = Mock()
+        
+        with patch('app.api.dependencies.get_lie_service', return_value=mock_service):
+            result = get_optional_lie_service()
+            
+            assert result == mock_service
+
+    def test_get_optional_lie_service_failure(self):
+        """Test optional LIE service dependency failure case."""
+        from app.api.dependencies import get_optional_lie_service
+        
+        with patch('app.api.dependencies.get_lie_service') as mock_get_service:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_get_service.side_effect = Exception("Service unavailable")
+                
+                result = get_optional_lie_service()
+                
+                assert result is None
+                mock_logger.warning.assert_called_once_with("LIEService unavailable: Service unavailable")
+
+    def test_get_optional_cis_service_success(self):
+        """Test optional CIS service dependency success case."""
+        from app.api.dependencies import get_optional_cis_service
+        mock_service = Mock()
+        
+        with patch('app.api.dependencies.get_cis_service', return_value=mock_service):
+            result = get_optional_cis_service()
+            
+            assert result == mock_service
+
+    def test_get_optional_cis_service_failure(self):
+        """Test optional CIS service dependency failure case."""
+        from app.api.dependencies import get_optional_cis_service
+        
+        with patch('app.api.dependencies.get_cis_service') as mock_get_service:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_get_service.side_effect = Exception("Service unavailable")
+                
+                result = get_optional_cis_service()
+                
+                assert result is None
+                mock_logger.warning.assert_called_once_with("CISService unavailable: Service unavailable")
+    
     def test_get_user_profile_service_configuration(self):
         """Test user profile service dependency configuration."""
         with patch('app.api.dependencies.UserProfileService') as mock_service_class:
@@ -82,7 +207,65 @@ class TestAPIDependencies:
             print("CALL ARGS:", call_args)
 
             assert call_args[1].get('timeout', None) == 30
+    def test_get_lie_service_error_handling(self):
+        """Test LIE service dependency error handling."""
+        with patch('app.api.dependencies.LIEService') as mock_service_class:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_service_class.side_effect = Exception("LIE service creation failed")
+                
+                with pytest.raises(Exception, match="LIE service creation failed"):
+                    get_lie_service()
+                
+                mock_logger.error.assert_called_once_with("Failed to create LIEService: LIE service creation failed")
 
+    def test_get_cis_service_error_handling(self):
+        """Test CIS service dependency error handling."""
+        with patch('app.api.dependencies.CISService') as mock_service_class:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_service_class.side_effect = Exception("CIS service creation failed")
+                
+                with pytest.raises(Exception, match="CIS service creation failed"):
+                    get_cis_service()
+                
+                mock_logger.error.assert_called_once_with("Failed to create CISService: CIS service creation failed")
+
+    def test_get_results_service_error_handling(self):
+        """Test Results service dependency error handling."""
+        with patch('app.api.dependencies.ResultsService') as mock_service_class:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_service_class.side_effect = Exception("Results service creation failed")
+                
+                with pytest.raises(Exception, match="Results service creation failed"):
+                    get_results_service()
+                
+                mock_logger.error.assert_called_once_with("Failed to create ResultsService: Results service creation failed")
+
+    def test_get_llm_service_error_handling(self):
+        """Test LLM service dependency error handling."""
+        with patch('app.api.dependencies.LLMService') as mock_service_class:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                mock_service_class.side_effect = Exception("LLM service creation failed")
+                
+                with pytest.raises(Exception, match="LLM service creation failed"):
+                    get_llm_service()
+                
+                mock_logger.error.assert_called_once_with("Failed to create LLMService: LLM service creation failed")
+
+    def test_get_celery_app_error_handling(self):
+        """Test Celery app dependency error handling."""
+        # Since celery_app is imported at module level and the function is simple,
+        # we'll test that the function works correctly and logs appropriately
+        with patch('app.api.dependencies.celery_app') as mock_celery_app:
+            with patch('app.api.dependencies.logger') as mock_logger:
+                # Test normal operation
+                result = get_celery_app()
+                assert result == mock_celery_app
+                mock_logger.debug.assert_called_once_with("Celery app dependency provided")
+                
+                # Test multiple calls to ensure consistency
+                result2 = get_celery_app()
+                assert result2 == mock_celery_app
+                assert result == result2
 
     def test_get_lie_service_multiple_calls(self):
         """Test LIE service dependency multiple calls."""

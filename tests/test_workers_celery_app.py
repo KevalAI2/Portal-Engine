@@ -165,12 +165,9 @@ class TestCeleryApp:
         assert hasattr(celery_app, 'main')
         assert len(celery_app.main) > 0
 
-    @patch('asyncio.run')
-    def test_celery_app_concurrent_access(self, mock_asyncio_run):
+    @pytest.mark.asyncio
+    async def test_celery_app_concurrent_access(self):
         """Test Celery app concurrent access."""
-        # Mock the asyncio run to avoid actual async execution issues
-        mock_asyncio_run.return_value = ['portal_engine'] * 10
-        
         import asyncio
         
         async def test_celery_app():
@@ -180,7 +177,7 @@ class TestCeleryApp:
         
         # Create multiple concurrent tasks
         tasks = [test_celery_app() for _ in range(10)]
-        results = asyncio.run(asyncio.gather(*tasks))
+        results = await asyncio.gather(*tasks)
         
         # All should complete successfully
         assert len(results) == 10

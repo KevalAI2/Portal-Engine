@@ -30,4 +30,5 @@ def safe_model_dump(obj: Any, **kwargs) -> Dict[str, Any]:
     elif hasattr(obj, '__dict__'):
         return obj.__dict__
     else:
-        return dict(obj)
+        # For non-iterable objects, return as-is wrapped in a dict
+        return {"value": obj}
