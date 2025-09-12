@@ -34,6 +34,7 @@ from app.services.results_service import ResultsService
 from app.workers.tasks import process_user_comprehensive
 from app.utils.prompt_builder import PromptBuilder
 from celery import Celery
+from app.utils.serialization import safe_model_dump
 
 router = APIRouter(prefix="/users", tags=["users"])
 logger = get_logger("users_router")
@@ -405,37 +406,6 @@ async def generate_recommendations_endpoint(
         logger.error(f"Error generating recommendations: {str(e)}")
         return APIResponse.error_response(
             message="Error generating recommendations",
-            status_code=500,
-            error={"details": str(e)}
-        )
-
-
-@router.get("/{user_id}/recommendations")
-async def get_user_recommendations(
-    user_id: str,
-    llm_service: LLMService = Depends(get_llm_service)
-):
-    """Get stored recommendations for a user"""
-    try:
-        logger.info(f"Retrieving recommendations for user {user_id}")
-        
-        recommendations = llm_service.get_recommendations_from_redis(user_id)
-        
-        if recommendations:
-            return APIResponse.success_response(
-                data=recommendations,
-                message="Recommendations retrieved successfully"
-            )
-        else:
-            return APIResponse.error_response(
-                message="No recommendations found for this user",
-                status_code=404
-            )
-        
-    except Exception as e:
-        logger.error(f"Error retrieving recommendations: {str(e)}")
-        return APIResponse.error_response(
-            message="Error retrieving recommendations",
             status_code=500,
             error={"details": str(e)}
         )
