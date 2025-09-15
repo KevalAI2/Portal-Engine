@@ -3,7 +3,7 @@ Results Service for ranking, filtering and deduplicating recommendations
 """
 import json
 from typing import Dict, Any, List, Tuple
-from app.core.logging import get_logger, log_exception, LoggingMixin
+from app.core.logging import get_logger, log_exception
 import redis
 from app.core.config import settings
 

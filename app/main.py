@@ -13,7 +13,7 @@ import os
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.core.logging import get_logger, log_exception, LoggingMixin
+from app.core.logging import get_logger
 from app.api.routers import health, users
 from app.models.responses import APIResponse
 from app.utils.serialization import safe_serialize

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.services.base import BaseService
 from app.models.schemas import UserProfile
 from app.core.config import settings
-from app.core.logging import get_logger, log_exception, LoggingMixin
+from app.core.logging import get_logger, log_exception
 
 
 class UserProfileService(BaseService):
