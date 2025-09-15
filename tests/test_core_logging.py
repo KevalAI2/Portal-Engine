@@ -102,6 +102,18 @@ class TestCoreLogging:
             assert 'wrapper_class' in kwargs
             assert issubclass(kwargs['wrapper_class'], structlog.stdlib.BoundLogger)
 
+    def test_setup_logging_debug_handler_enabled(self, monkeypatch):
+        """Ensure debug handler branch executes when debug is True."""
+        import app.core.logging as logging_module
+        monkeypatch.setattr(logging_module.settings, 'debug', True, raising=False)
+        logging_module.setup_logging()
+        root_logger = logging_module.logging.getLogger()
+        # Ensure a debug file handler is present
+        assert any(
+            isinstance(h, logging_module.logging.FileHandler) and hasattr(h, 'baseFilename') and 'app_debug.log' in h.baseFilename
+            for h in root_logger.handlers
+        )
+
     def test_setup_logging_cache_logger(self):
         """Test setup_logging cache logger configuration."""
         with patch('structlog.configure') as mock_configure:
@@ -113,6 +125,38 @@ class TestCoreLogging:
             # Check cache logger
             assert 'cache_logger_on_first_use' in kwargs
             assert kwargs['cache_logger_on_first_use'] is True
+
+    def test_log_function_call_decorator_success_and_failure(self):
+        """Exercise decorator success and exception branches."""
+        from app.core.logging import log_function_call
+
+        calls = {"completed": False}
+
+        @log_function_call('test_func')
+        def test_func_ok(x):
+            calls["completed"] = True
+            return x * 2
+
+        assert test_func_ok(3) == 6
+        assert calls["completed"] is True
+
+        @log_function_call('test_func_fail')
+        def test_func_fail():
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError):
+            test_func_fail()
+
+    def test_log_database_operation_error_and_success(self):
+        """Hit both branches of database operation logger."""
+        from app.core.logging import log_database_operation
+        log_database_operation('insert', 'users', True, rows=1)
+        log_database_operation('insert', 'users', False, error="duplicate")
+
+    def test_log_background_task_other_status(self):
+        """Cover background task 'else' status branch."""
+        from app.core.logging import log_background_task
+        log_background_task('cleanup', 'task-1', 'queued', attempts=0)
 
     def test_get_logger_returns_bound_logger(self):
         """Test that get_logger returns a BoundLogger."""

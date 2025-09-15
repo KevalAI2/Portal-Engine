@@ -2,9 +2,9 @@ import pytest
 import json
 import threading
 import time
-from unittest.mock import patch, ANY
+from unittest.mock import patch, ANY, MagicMock
 from fastapi.testclient import TestClient
-from fastapi import status
+from fastapi import status, APIRouter
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from app.main import app, SafeJSONEncoder, logger
@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.models.responses import APIResponse
 from app.utils.serialization import safe_serialize
 from importlib import reload
-from fastapi import HTTPException
+from fastapi import HTTPException, FastAPI
 
 @pytest.mark.unit
 class TestMainApplication:
@@ -122,6 +122,15 @@ class TestMainApplication:
             assert "error" in data
             assert "validation_errors" in data["error"]
 
+    def test_http_exception_handler(self):
+        """Hit HTTPException handler path by triggering 405 on DELETE /ping."""
+        client = TestClient(app)
+        response = client.delete("/ping")
+        assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+        body = response.json()
+        assert isinstance(body, dict)
+        assert "detail" in body or "message" in body
+
     def test_pydantic_validation_exception_handler(self):
         """Test the Pydantic validation exception handler."""
         # Test with invalid data that will trigger Pydantic validation
@@ -133,6 +142,33 @@ class TestMainApplication:
             # The endpoint might handle this gracefully, so we check for either 422 or 200
             assert response.status_code in [status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_200_OK]
 
+    def test_global_exception_handler_path(self):
+        """Trigger global exception handler via a dummy endpoint raising Exception."""
+        # Create a temporary test app to avoid polluting the main app
+        test_app = FastAPI()
+        
+        # Copy all middleware and exception handlers from main app
+        for middleware in app.user_middleware:
+            test_app.user_middleware.append(middleware)
+        
+        # Copy exception handlers
+        for exc_type, handler in app.exception_handlers.items():
+            test_app.exception_handlers[exc_type] = handler
+        
+        # Add the boom endpoint
+        @test_app.get("/boom")
+        async def boom():
+            raise Exception("kaboom")
+        
+        # Prevent the test client from re-raising server exceptions so our
+        # global exception handler can return a 500 response for assertions
+        client = TestClient(test_app, raise_server_exceptions=False)
+        resp = client.get("/boom")
+        assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        data = resp.json()
+        assert isinstance(data, dict)
+        assert data.get("success") is False
+
     def test_openapi_docs_endpoints(self):
         """Test that OpenAPI documentation endpoints are accessible."""
         client = TestClient(app)
@@ -143,27 +179,15 @@ class TestMainApplication:
         response = client.get("/redoc")
         assert response.status_code == status.HTTP_200_OK
 
-    def test_request_logging_middleware(self):
-        """Test that request logging middleware works."""
-        with patch("app.main.logger") as mock_logger:
-            client = TestClient(app)
+    def test_request_logging_middleware(self, caplog):
+        """Test that request logging middleware works (using captured logs)."""
+        client = TestClient(app)
+        with caplog.at_level("INFO"):
             response = client.get("/ping")
-            assert response.status_code == status.HTTP_200_OK
-            assert mock_logger.info.call_count >= 2
-            mock_logger.info.assert_any_call(
-                "Incoming request",
-                method="GET",
-                url=ANY,
-                client_ip=ANY,
-                user_agent=ANY
-            )
-            mock_logger.info.assert_any_call(
-                "Request completed",
-                method="GET",
-                url=ANY,
-                status_code=200,
-                process_time=ANY
-            )
+        assert response.status_code == status.HTTP_200_OK
+        # Validate that our structured logs were emitted by middleware
+        assert "Processing HTTP request" in caplog.text
+        assert "HTTP request completed" in caplog.text
 
     def test_invalid_endpoint(self):
         """Test that invalid endpoints return 404."""

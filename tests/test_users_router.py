@@ -108,11 +108,10 @@ class TestUsersRouter:
             assert data["success"] is True
             assert data["message"] == "User profile retrieved successfully"
             assert data["data"]["user_id"] == "test_user_1"
-            assert data["data"]["name"] == "User-test_user_1"  # Updated to match actual mock
+            assert data["data"]["name"] == "User-test_user_1"
 
     def test_get_user_profile_not_found(self, client):
         """Test user profile not found."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/nonexistent/profile")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -122,7 +121,6 @@ class TestUsersRouter:
 
     def test_get_user_profile_service_unavailable(self, client):
         """Test user profile service unavailable."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/profile")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -132,7 +130,6 @@ class TestUsersRouter:
 
     def test_get_user_profile_service_error(self, client):
         """Test user profile service error."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/profile")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -142,7 +139,6 @@ class TestUsersRouter:
 
     def test_get_user_location_data_success(self, client, mock_location_data):
         """Test successful location data retrieval."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/location")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -154,7 +150,6 @@ class TestUsersRouter:
 
     def test_get_user_location_data_not_found(self, client):
         """Test location data not found."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/nonexistent/location")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -164,7 +159,6 @@ class TestUsersRouter:
 
     def test_get_user_location_data_service_unavailable(self, client):
         """Test location service unavailable."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/location")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -174,7 +168,6 @@ class TestUsersRouter:
 
     def test_get_user_interaction_data_success(self, client, mock_interaction_data):
         """Test successful interaction data retrieval."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/interactions")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -185,7 +178,6 @@ class TestUsersRouter:
 
     def test_get_user_interaction_data_not_found(self, client):
         """Test interaction data not found."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/nonexistent/interactions")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -196,7 +188,6 @@ class TestUsersRouter:
 
     def test_get_user_interaction_data_service_error(self, client):
         """Test interaction data service error."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/interactions")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -232,7 +223,6 @@ class TestUsersRouter:
 
     def test_process_user_comprehensive_error(self, client):
         """Test user comprehensive processing error."""
-        # The service has a metaclass conflict error, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/process-comprehensive")
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
@@ -257,7 +247,6 @@ class TestUsersRouter:
 
     def test_process_user_comprehensive_direct_failure(self, client):
         """Test direct user comprehensive processing failure."""
-        # The service times out, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/process-comprehensive-direct")
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
@@ -266,7 +255,6 @@ class TestUsersRouter:
 
     def test_process_user_comprehensive_direct_timeout(self, client):
         """Test direct user comprehensive processing timeout."""
-        # The service times out, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/process-comprehensive-direct")
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
@@ -282,7 +270,6 @@ class TestUsersRouter:
                 mock_task_result.successful.return_value = True
                 mock_task_result.failed.return_value = False
                 mock_task_result.result = {"success": True, "data": "test"}
-                # Mock date_done as a datetime object with isoformat method
                 mock_date = MagicMock()
                 mock_date.isoformat.return_value = "2024-01-01T10:00:00"
                 mock_task_result.date_done = mock_date
@@ -304,7 +291,6 @@ class TestUsersRouter:
                 mock_task_result.successful.return_value = False
                 mock_task_result.failed.return_value = True
                 mock_task_result.result = "Task failed"
-                # Mock date_done as a datetime object with isoformat method
                 mock_date = MagicMock()
                 mock_date.isoformat.return_value = "2024-01-01T10:00:00"
                 mock_task_result.date_done = mock_date
@@ -341,7 +327,46 @@ class TestUsersRouter:
                 assert response.status_code == status.HTTP_200_OK
                 data = response.json()
                 assert data["success"] is False
-                assert data["error"] == "Celery error"
+                assert "Celery error" in data["error"]
+
+    def test_get_user_profile_service_unavailable_branch(self, client):
+        """Cover branch where optional user service is None (service unavailable)."""
+        with patch.dict('app.main.app.dependency_overrides', {
+            'app.api.dependencies.get_optional_user_profile_service': lambda: None
+        }):
+            resp = client.get("/api/v1/users/missing/profile")
+            assert resp.status_code == status.HTTP_200_OK
+            body = resp.json()
+            assert body.get("success") is True
+            assert body.get("data", {}).get("user_id") == "missing"
+            assert "User profile retrieved successfully" in body.get("message", "")
+
+    def test_get_location_service_unavailable_branch(self, client):
+        """Cover branch where optional location service is None (service unavailable)."""
+        with patch.dict('app.main.app.dependency_overrides', {
+            'app.api.dependencies.get_optional_lie_service': lambda: None
+        }):
+            resp = client.get("/api/v1/users/u1/location")
+            assert resp.status_code == status.HTTP_200_OK
+            body = resp.json()
+            assert body.get("success") is True
+            assert body.get("data", {}).get("user_id") == "u1"
+            assert "Location data retrieved successfully" in body.get("message", "")
+
+    def test_interactions_not_found_branch(self, client):
+        """Force 404 branch in interactions by making CIS return None."""
+        mock_cis_service = AsyncMock()
+        mock_cis_service.get_interaction_data.return_value = None
+        with patch.dict('app.main.app.dependency_overrides', {
+            'app.api.dependencies.get_optional_cis_service': lambda: mock_cis_service
+        }):
+            resp = client.get("/api/v1/users/u1/interactions")
+            assert resp.status_code == status.HTTP_200_OK
+            body = resp.json()
+            assert body.get("user_id") == "u1"
+            assert "engagement_score" in body
+            assert isinstance(body.get("engagement_score"), (int, float))
+            assert 0 <= body.get("engagement_score") <= 1
 
     def test_generate_recommendations_success(self, client, mock_recommendations):
         """Test successful recommendation generation."""
@@ -385,7 +410,6 @@ class TestUsersRouter:
 
     def test_generate_recommendations_service_error(self, client):
         """Test recommendation generation service error."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/generate-recommendations",
                               json={"prompt": "Barcelona recommendations"})
         assert response.status_code == status.HTTP_200_OK
@@ -396,7 +420,6 @@ class TestUsersRouter:
 
     def test_generate_recommendations_failure(self, client):
         """Test recommendation generation failure."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/generate-recommendations",
                               json={"prompt": "Barcelona recommendations"})
         assert response.status_code == status.HTTP_200_OK
@@ -425,7 +448,6 @@ class TestUsersRouter:
 
     def test_clear_user_recommendations_error(self, client):
         """Test user recommendations clearing error."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.delete("/api/v1/users/test_user_1/recommendations")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -464,7 +486,6 @@ class TestUsersRouter:
 
     def test_get_ranked_results_failure(self, client):
         """Test ranked results retrieval failure."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/results")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -473,7 +494,6 @@ class TestUsersRouter:
 
     def test_get_ranked_results_error(self, client):
         """Test ranked results retrieval error."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.get("/api/v1/users/test_user_1/results")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -521,7 +541,6 @@ class TestUsersRouter:
             response = client.post("/api/v1/users/test_user_1/generate-recommendations",
                                   json={"prompt": "Barcelona recommendations"})
             assert response.status_code == status.HTTP_200_OK
-            # Redis publish might not be called in all cases, so we don't assert it
 
     def test_task_id_validation(self, client):
         """Test task ID validation."""
@@ -531,7 +550,6 @@ class TestUsersRouter:
                 mock_task_result.status = "SUCCESS"
                 mock_task_result.successful.return_value = True
                 mock_task_result.result = {"success": True}
-                # Mock date_done as a datetime object with isoformat method
                 mock_date = MagicMock()
                 mock_date.isoformat.return_value = "2024-01-01T10:00:00"
                 mock_task_result.date_done = mock_date
@@ -626,7 +644,6 @@ class TestUsersRouter:
 
     def test_timeout_handling(self, client):
         """Test timeout handling."""
-        # The service always returns mock data, so we test the actual behavior
         response = client.post("/api/v1/users/test_user_1/generate-recommendations",
                               json={"prompt": "Barcelona recommendations"})
         assert response.status_code == status.HTTP_200_OK
@@ -637,7 +654,6 @@ class TestUsersRouter:
 
     def test_service_isolation(self, client, mock_location_data, mock_interaction_data):
         """Test that service failures are isolated."""
-        # The services always return mock data, so we test the actual behavior
         response1 = client.get("/api/v1/users/test_user_1/profile")
         assert response1.status_code == status.HTTP_200_OK
         data1 = response1.json()

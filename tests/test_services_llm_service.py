@@ -142,7 +142,10 @@ class TestLLMService:
             result = await llm_service._call_llm_api("test prompt")
             assert result == {"movies": [], "music": [], "places": [], "events": []}
             mock_fallback.assert_called()
-            mock_logger.error.assert_called_with("Timeout calling LLM API")
+            # Structured logging may include extra kwargs; verify message content
+            assert mock_logger.error.called
+            args, kwargs = mock_logger.error.call_args
+            assert isinstance(args[0], str) and "Timeout calling LLM API" in args[0]
 
     @pytest.mark.asyncio
     async def test_call_llm_api_http_error(self, llm_service):
@@ -181,6 +184,30 @@ class TestLLMService:
             result = await llm_service._call_llm_api("test prompt")
             assert "movies" in result
             assert len(result["movies"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_call_llm_api_empty_result(self, llm_service):
+        """Test path where result field is None leading to fallback."""
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_response = Mock()
+            mock_response.json.return_value = {"result": None}
+            mock_response.raise_for_status = Mock()
+            mock_response.status_code = 200
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+            result = await llm_service._call_llm_api("test prompt")
+            assert result == {"movies": [], "music": [], "places": [], "events": []}
+
+    @pytest.mark.asyncio
+    async def test_call_llm_api_unexpected_result_type(self, llm_service):
+        """Test path where result is an unexpected type leading to fallback."""
+        with patch('httpx.AsyncClient') as mock_client:
+            mock_response = Mock()
+            mock_response.json.return_value = {"result": 12345}
+            mock_response.raise_for_status = Mock()
+            mock_response.status_code = 200
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+            result = await llm_service._call_llm_api("test prompt")
+            assert result == {"movies": [], "music": [], "places": [], "events": []}
 
     def test_parse_text_response(self, llm_service):
         """Test text response parsing."""
@@ -270,7 +297,11 @@ class TestLLMService:
             mock_pub_client.publish.side_effect = Exception("Publish error")
             mock_redis_pub.return_value = mock_pub_client
             llm_service._store_in_redis("user_123", {"recommendations": []})
-            mock_logger.error.assert_called_with("Failed to publish notification for user user_123: Publish error")
+            assert mock_logger.error.called
+            args, kwargs = mock_logger.error.call_args
+            assert "Failed to publish notification" in args[0]
+            assert kwargs.get("user_id") == "user_123"
+            assert kwargs.get("error") == "Publish error"
 
     def test_get_recommendations_from_redis(self, llm_service):
         """Test retrieving recommendations from Redis."""
@@ -285,14 +316,21 @@ class TestLLMService:
         with patch('app.services.llm_service.logger') as mock_logger:
             result = llm_service.get_recommendations_from_redis("user_123")
             assert result is None
-            mock_logger.error.assert_called_with("Error retrieving from Redis: Redis error")
+            assert mock_logger.error.called
+            args, kwargs = mock_logger.error.call_args
+            assert "Error retrieving" in args[0]
+            assert kwargs.get("user_id") == "user_123"
+            assert kwargs.get("error") == "Redis error"
 
     def test_clear_recommendations_user(self, llm_service):
         """Test clearing recommendations for a user."""
         with patch('app.services.llm_service.logger') as mock_logger:
             llm_service.clear_recommendations("user_123")
             llm_service.redis_client.delete.assert_called_with("recommendations:user_123")
-            mock_logger.info.assert_called_with("Cleared recommendations for user user_123")
+            assert mock_logger.info.called
+            args, kwargs = mock_logger.info.call_args
+            assert "cleared" in args[0].lower()
+            assert kwargs.get("user_id") == "user_123"
 
     def test_clear_recommendations_all(self, llm_service):
         """Test clearing all recommendations."""
@@ -300,7 +338,10 @@ class TestLLMService:
         with patch('app.services.llm_service.logger') as mock_logger:
             llm_service.clear_recommendations()
             llm_service.redis_client.delete.assert_called_with("recommendations:user_123")
-            mock_logger.info.assert_called_with("Cleared all recommendations (1 keys)")
+            assert mock_logger.info.called
+            args, kwargs = mock_logger.info.call_args
+            assert "recommendations" in args[0].lower()
+            assert kwargs.get("total_keys") == 1
 
     def test_generate_demo_recommendations(self, llm_service):
         """Test demo recommendations generation."""

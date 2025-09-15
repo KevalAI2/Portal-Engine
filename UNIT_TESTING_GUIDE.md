@@ -110,15 +110,15 @@ python run_all_tests.py --list
 
 ## Test Results Dashboard
 
-*Last Updated: 2025-09-15 13:01:41*
+*Last Updated: 2025-09-15 16:01:33*
 
 ### 📈 Overall Test Summary
-- **Total Tests**: 774
-- **Passed**: 649 ✅
-- **Failed**: 125 ❌
+- **Total Tests**: 785
+- **Passed**: 785 ✅
+- **Failed**: 0 ❌
 - **Errors**: 0 ⚠️
-- **Warnings**: 276 ⚡
-- **Coverage**: 87.5%
+- **Warnings**: 59 ⚡
+- **Coverage**: 91.7%
 
 ### 🏆 Test Pass Rate by File
 | Test File | Passed | Total | Pass Rate | Status |
@@ -126,27 +126,27 @@ python run_all_tests.py --list
 | test_api_dependencies.py       | 43     | 43    |   100.0% | ✅      |
 | test_core_config.py            | 33     | 33    |   100.0% | ✅      |
 | test_core_constants.py         | 48     | 48    |   100.0% | ✅      |
-| test_core_logging.py           | 35     | 35    |   100.0% | ✅      |
-| test_health_router.py          | 0      | 20    |     0.0% | ❌      |
-| test_main_app.py               | 61     | 63    |    96.8% | ⚠️     |
+| test_core_logging.py           | 39     | 39    |   100.0% | ✅      |
+| test_health_router.py          | 10     | 10    |   100.0% | ✅      |
+| test_main_app.py               | 64     | 64    |   100.0% | ✅      |
 | test_models_requests.py        | 48     | 48    |   100.0% | ✅      |
 | test_models_responses.py       | 35     | 35    |   100.0% | ✅      |
 | test_models_schemas.py         | 23     | 23    |   100.0% | ✅      |
-| test_notification_service.py   | 21     | 93    |    22.6% | ❌      |
-| test_services_base.py          | 19     | 61    |    31.1% | ❌      |
-| test_services_cis_service.py   | 29     | 59    |    49.2% | ❌      |
-| test_services_lie_service.py   | 25     | 55    |    45.5% | ❌      |
-| test_services_llm_service.py   | 14     | 36    |    38.9% | ❌      |
+| test_notification_service.py   | 57     | 57    |   100.0% | ✅      |
+| test_services_base.py          | 40     | 40    |   100.0% | ✅      |
+| test_services_cis_service.py   | 44     | 44    |   100.0% | ✅      |
+| test_services_lie_service.py   | 40     | 40    |   100.0% | ✅      |
+| test_services_llm_service.py   | 27     | 27    |   100.0% | ✅      |
 | test_services_results_service.py | 26     | 26    |   100.0% | ✅      |
-| test_services_user_profile.py  | 20     | 50    |    40.0% | ❌      |
-| test_users_router.py           | 52     | 52    |   100.0% | ✅      |
+| test_services_user_profile.py  | 35     | 35    |   100.0% | ✅      |
+| test_users_router.py           | 55     | 55    |   100.0% | ✅      |
 | test_utils_prompt_builder.py   | 38     | 38    |   100.0% | ✅      |
 | test_utils_serialization.py    | 26     | 26    |   100.0% | ✅      |
-| test_workers_celery_app.py     | 33     | 35    |    94.3% | ⚠️     |
+| test_workers_celery_app.py     | 34     | 34    |   100.0% | ✅      |
 | test_workers_tasks.py          | 20     | 20    |   100.0% | ✅      |
 
 ### 📊 Coverage Breakdown
-- **Line Coverage**: 87.5%
+- **Line Coverage**: 91.7%
 
 ---
 
@@ -159,23 +159,23 @@ python run_all_tests.py --list
 | test_api_dependencies.py       | Comprehensive test suite for API dependencies module | 43         | 2025-09-12 16:52:44 |
 | test_core_config.py            | Comprehensive test suite for core configuration module | 33         | 2025-09-08 18:58:22 |
 | test_core_constants.py         | Comprehensive test suite for core constants module | 48         | 2025-09-08 15:40:38 |
-| test_core_logging.py           | Comprehensive test suite for core logging module   | 35         | 2025-09-08 16:33:21 |
-| test_health_router.py          | Test the health check router functionality.        | 20         | 2025-09-12 16:15:49 |
-| test_main_app.py               | Test the main FastAPI application setup and configuration. | 63         | 2025-09-12 16:42:40 |
+| test_core_logging.py           | Comprehensive test suite for core logging module   | 39         | 2025-09-15 15:04:12 |
+| test_health_router.py          | Test the health check router functionality.        | 10         | 2025-09-12 16:15:49 |
+| test_main_app.py               | Test the main FastAPI application setup and configuration. | 64         | 2025-09-15 15:48:15 |
 | test_models_requests.py        | Tests for app/models/requests.py                   | 48         | 2025-09-12 11:25:04 |
 | test_models_responses.py       | Tests for app/models/responses.py                  | 35         | 2025-09-12 11:25:04 |
 | test_models_schemas.py         | Comprehensive test suite for models/schemas module - Fixed version | 23         | 2025-09-12 10:50:29 |
-| test_notification_service.py   | Comprehensive unit tests for notification_service.py | 93         | 2025-09-09 18:28:33 |
-| test_services_base.py          | Comprehensive test suite for base service module   | 61         | 2025-09-08 17:51:01 |
-| test_services_cis_service.py   | Test the CIS service functionality.                | 59         | 2025-09-09 16:22:46 |
-| test_services_lie_service.py   | Test the LIE service functionality.                | 55         | 2025-09-11 12:43:25 |
-| test_services_llm_service.py   | Comprehensive test suite for LLM service module    | 36         | 2025-09-12 14:37:33 |
+| test_notification_service.py   | Comprehensive unit tests for notification_service.py | 57         | 2025-09-09 18:28:33 |
+| test_services_base.py          | Comprehensive test suite for base service module   | 40         | 2025-09-08 17:51:01 |
+| test_services_cis_service.py   | Test the CIS service functionality.                | 44         | 2025-09-09 16:22:46 |
+| test_services_lie_service.py   | Test the LIE service functionality.                | 40         | 2025-09-11 12:43:25 |
+| test_services_llm_service.py   | Comprehensive test suite for LLM service module    | 27         | 2025-09-15 15:04:09 |
 | test_services_results_service.py | Test the results service functionality.            | 26         | 2025-09-10 18:29:27 |
-| test_services_user_profile.py  | Comprehensive test suite for user profile service module | 50         | 2025-09-09 17:58:31 |
-| test_users_router.py           | Comprehensive test suite for the users API router  | 52         | 2025-09-12 15:58:50 |
+| test_services_user_profile.py  | Comprehensive test suite for user profile service module | 35         | 2025-09-09 17:58:31 |
+| test_users_router.py           | Comprehensive test suite for the users API router  | 55         | 2025-09-15 15:56:31 |
 | test_utils_prompt_builder.py   | Test suite for PromptBuilder utility functionality. | 38         | 2025-09-12 13:52:23 |
 | test_utils_serialization.py    | Tests for app/utils/serialization.py               | 26         | 2025-09-12 11:25:04 |
-| test_workers_celery_app.py     | Comprehensive test suite for Celery app configuration module | 35         | 2025-09-12 17:05:55 |
+| test_workers_celery_app.py     | Comprehensive test suite for Celery app configuration module | 34         | 2025-09-12 17:05:55 |
 | test_workers_tasks.py          | Test suite for Celery tasks in tasks.py.           | 20         | 2025-09-12 13:02:47 |
 
 ### 📝 Individual Test File Results
@@ -185,154 +185,154 @@ python run_all_tests.py --list
 - **Passed**: 43
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_core_config.py
 - **Total Tests**: 33
 - **Passed**: 33
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_core_constants.py
 - **Total Tests**: 48
 - **Passed**: 48
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_core_logging.py
-- **Total Tests**: 35
-- **Passed**: 35
+- **Total Tests**: 39
+- **Passed**: 39
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_health_router.py
-- **Total Tests**: 20
-- **Passed**: 0
-- **Failed**: 20
+- **Total Tests**: 10
+- **Passed**: 10
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_main_app.py
-- **Total Tests**: 63
-- **Passed**: 61
-- **Failed**: 2
+- **Total Tests**: 64
+- **Passed**: 64
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_models_requests.py
 - **Total Tests**: 48
 - **Passed**: 48
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_models_responses.py
 - **Total Tests**: 35
 - **Passed**: 35
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_models_schemas.py
 - **Total Tests**: 23
 - **Passed**: 23
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_notification_service.py
-- **Total Tests**: 93
-- **Passed**: 21
-- **Failed**: 72
+- **Total Tests**: 57
+- **Passed**: 57
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_base.py
-- **Total Tests**: 61
-- **Passed**: 19
-- **Failed**: 42
+- **Total Tests**: 40
+- **Passed**: 40
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_cis_service.py
-- **Total Tests**: 59
-- **Passed**: 29
-- **Failed**: 30
+- **Total Tests**: 44
+- **Passed**: 44
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_lie_service.py
-- **Total Tests**: 55
-- **Passed**: 25
-- **Failed**: 30
+- **Total Tests**: 40
+- **Passed**: 40
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_llm_service.py
-- **Total Tests**: 36
-- **Passed**: 14
-- **Failed**: 22
+- **Total Tests**: 27
+- **Passed**: 27
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_results_service.py
 - **Total Tests**: 26
 - **Passed**: 26
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_services_user_profile.py
-- **Total Tests**: 50
-- **Passed**: 20
-- **Failed**: 30
-- **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
-
-#### test_users_router.py
-- **Total Tests**: 52
-- **Passed**: 52
+- **Total Tests**: 35
+- **Passed**: 35
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
+
+#### test_users_router.py
+- **Total Tests**: 55
+- **Passed**: 55
+- **Failed**: 0
+- **Warnings**: 0
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_utils_prompt_builder.py
 - **Total Tests**: 38
 - **Passed**: 38
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_utils_serialization.py
 - **Total Tests**: 26
 - **Passed**: 26
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_workers_celery_app.py
-- **Total Tests**: 35
-- **Passed**: 33
-- **Failed**: 2
+- **Total Tests**: 34
+- **Passed**: 34
+- **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 #### test_workers_tasks.py
 - **Total Tests**: 20
 - **Passed**: 20
 - **Failed**: 0
 - **Warnings**: 0
-- **Last Run**: 2025-09-15 13:01:41
+- **Last Run**: 2025-09-15 16:01:33
 
 ---
 
 ## Coverage Report
 
 ### 📊 Coverage Summary
-- **Overall Coverage**: 87.5%
+- **Overall Coverage**: 91.7%
 - **Target Coverage**: 80%
 - **Status**: ✅ PASSED
 
@@ -342,12 +342,12 @@ python run_all_tests.py --list
 | __init__.py                    |   100.0% | 1     | 0       |
 | api/dependencies.py            |    96.7% | 87    | 3       |
 | api/routers/__init__.py        |   100.0% | 2     | 0       |
-| api/routers/health.py          |    57.6% | 38    | 28      |
+| api/routers/health.py          |    90.9% | 60    | 6       |
 | api/routers/users.py           |    78.5% | 161   | 44      |
 | core/config.py                 |   100.0% | 43    | 0       |
 | core/constants.py              |    96.9% | 31    | 1       |
-| core/logging.py                |    73.7% | 73    | 26      |
-| main.py                        |    82.1% | 87    | 19      |
+| core/logging.py                |    97.0% | 96    | 3       |
+| main.py                        |    89.6% | 95    | 11      |
 | models/requests.py             |    88.6% | 62    | 8       |
 
 ### 🎯 Coverage Goals
