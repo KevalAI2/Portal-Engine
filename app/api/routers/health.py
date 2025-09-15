@@ -3,7 +3,7 @@ Health check API router
 """
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception
 from app.core.config import settings
 from app.models.responses import HealthCheckResponse, APIResponse
 from app.services.user_profile import UserProfileService
@@ -29,7 +29,7 @@ async def health_check(
     Health check endpoint to verify service status and dependencies
     """
     try:
-        logger.info("Health check requested")
+        logger.info("Health check requested", endpoint="health_check")
         
         # Check service health
         services_status = {}
@@ -38,20 +38,38 @@ async def health_check(
         try:
             user_profile_healthy = await user_profile_service.health_check()
             services_status["user_profile_service"] = "healthy" if user_profile_healthy else "unhealthy"
-        except Exception:
+            logger.info("User profile service health check completed", 
+                       status=services_status["user_profile_service"],
+                       endpoint="health_check")
+        except Exception as e:
             services_status["user_profile_service"] = "unavailable"
+            logger.warning("User profile service health check failed", 
+                          error=str(e),
+                          endpoint="health_check")
         
         try:
             lie_healthy = await lie_service.health_check()
             services_status["lie_service"] = "healthy" if lie_healthy else "unhealthy"
-        except Exception:
+            logger.info("LIE service health check completed", 
+                       status=services_status["lie_service"],
+                       endpoint="health_check")
+        except Exception as e:
             services_status["lie_service"] = "unavailable"
+            logger.warning("LIE service health check failed", 
+                          error=str(e),
+                          endpoint="health_check")
         
         try:
             cis_healthy = await cis_service.health_check()
             services_status["cis_service"] = "healthy" if cis_healthy else "unhealthy"
-        except Exception:
+            logger.info("CIS service health check completed", 
+                       status=services_status["cis_service"],
+                       endpoint="health_check")
+        except Exception as e:
             services_status["cis_service"] = "unavailable"
+            logger.warning("CIS service health check failed", 
+                          error=str(e),
+                          endpoint="health_check")
         
         # Determine overall status
         if all(status == "healthy" for status in services_status.values()):
@@ -69,7 +87,10 @@ async def health_check(
             services=services_status
         )
         
-        logger.info("Health check completed", status=overall_status, services=services_status)
+        logger.info("Health check completed", 
+                   status=overall_status, 
+                   services=services_status,
+                   endpoint="health_check")
         
         return APIResponse.success_response(
             data=health_data.model_dump(),
@@ -77,7 +98,10 @@ async def health_check(
         )
         
     except Exception as e:
-        logger.error("Health check failed", error=str(e))
+        logger.error("Health check failed", 
+                   error=str(e),
+                   endpoint="health_check")
+        log_exception("health_router", e, {"endpoint": "health_check"})
         
         error_data = HealthCheckResponse(
             status="unhealthy",

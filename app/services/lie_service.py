@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from app.services.base import BaseService
 from app.models.schemas import LocationData
 from app.core.config import settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception, LoggingMixin
 
 
 class LIEService(BaseService):
@@ -221,7 +221,10 @@ class LIEService(BaseService):
     async def get_location_data(self, user_id: str) -> Optional[LocationData]:
         """Fetch location data for a user - now generates comprehensive mock data"""
         try:
-            self.logger.info("Generating mock location data", user_id=user_id)
+            self.logger.info("Generating mock location data", 
+                           user_id=user_id,
+                           service="lie_service",
+                           operation="generate_location_data")
             
             # Generate comprehensive mock location data
             location_data = self._generate_mock_location_data(user_id)
@@ -238,13 +241,22 @@ class LIEService(BaseService):
             
             self.logger.info("Mock location data generated successfully", 
                            user_id=user_id, 
-                           data_confidence=location_data["data_confidence"])
+                           data_confidence=location_data["data_confidence"],
+                           current_location=location_data["current_location"]["city"],
+                           home_location=location_data["home_location"]["city"],
+                           travel_history_count=len(location_data["travel_history"]),
+                           service="lie_service",
+                           operation="generate_location_data")
             
             return location_obj
             
         except Exception as e:
             self.logger.error("Failed to generate mock location data", 
-                            user_id=user_id, error=str(e))
+                            user_id=user_id, 
+                            error=str(e),
+                            service="lie_service",
+                            operation="generate_location_data")
+            log_exception("lie_service", e, {"user_id": user_id, "operation": "generate_location_data"})
             return None
     
 

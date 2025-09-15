@@ -3,7 +3,7 @@ Results Service for ranking, filtering and deduplicating recommendations
 """
 import json
 from typing import Dict, Any, List, Tuple
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception, LoggingMixin
 import redis
 from app.core.config import settings
 
@@ -15,12 +15,30 @@ class ResultsService:
     
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=6379,
-            db=1,
-            decode_responses=True
-        )
+        logger.info("Initializing Results service",
+                   timeout=timeout,
+                   redis_host=settings.redis_host,
+                   redis_port=6379,
+                   redis_db=1)
+        
+        try:
+            self.redis_client = redis.Redis(
+                host=settings.redis_host,
+                port=6379,
+                db=1,
+                decode_responses=True
+            )
+            # Test Redis connection
+            self.redis_client.ping()
+            logger.info("Redis connection established successfully",
+                       service="results_service",
+                       redis_host=settings.redis_host)
+        except Exception as e:
+            logger.error("Failed to connect to Redis",
+                        service="results_service",
+                        redis_host=settings.redis_host,
+                        error=str(e))
+            raise
     
     def get_ranked_results(self, user_id: str, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -34,12 +52,20 @@ class ResultsService:
             Ranked and filtered recommendations
         """
         try:
+            logger.info("Getting ranked results for user",
+                       user_id=user_id,
+                       filters=filters,
+                       service="results_service",
+                       operation="get_ranked_results")
+            
             # Get raw recommendations from Redis
             raw_data = self._get_recommendations(user_id)
             
             # If no Redis data, generate dummy ranked results
             if not raw_data:
-                logger.info(f"No stored recommendations found for user {user_id}, using dummy ranked data")
+                logger.info("No stored recommendations found, using dummy ranked data",
+                           user_id=user_id,
+                           service="results_service")
                 return self._generate_dummy_ranked_results(user_id, filters or {})
             
             # Extract recommendations and user context
@@ -72,17 +98,46 @@ class ResultsService:
             }
             
         except Exception as e:
-            logger.error(f"Error processing ranked results: {str(e)}")
+            logger.error("Error processing ranked results",
+                        user_id=user_id,
+                        error=str(e),
+                        service="results_service",
+                        operation="get_ranked_results")
+            log_exception("results_service", e, {"user_id": user_id, "operation": "get_ranked_results"})
             return {"success": False, "message": str(e)}
     
     def _get_recommendations(self, user_id: str) -> Dict[str, Any]:
         """Get recommendations from Redis"""
         try:
             key = f"recommendations:{user_id}"
+            logger.info("Retrieving recommendations from Redis",
+                       user_id=user_id,
+                       key=key,
+                       service="results_service",
+                       operation="get_recommendations")
+            
             data = self.redis_client.get(key)
-            return json.loads(data) if data else None
+            if data:
+                data_size = len(data)
+                logger.info("Recommendations retrieved successfully from Redis",
+                           user_id=user_id,
+                           key=key,
+                           data_size_bytes=data_size,
+                           service="results_service")
+                return json.loads(data)
+            else:
+                logger.info("No recommendations found in Redis",
+                           user_id=user_id,
+                           key=key,
+                           service="results_service")
+                return None
         except Exception as e:
-            logger.error(f"Error getting recommendations: {str(e)}")
+            logger.error("Error getting recommendations from Redis",
+                        user_id=user_id,
+                        key=key,
+                        error=str(e),
+                        service="results_service")
+            log_exception("results_service", e, {"user_id": user_id, "operation": "get_recommendations"})
             return None
     
     def _rank_recommendations(self, recommendations: Dict[str, List], prompt: str, user_id: str) -> Dict[str, List]:

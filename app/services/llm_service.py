@@ -6,7 +6,7 @@ import time
 import random
 import httpx
 from typing import Dict, Any, List, Optional
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_api_call, log_api_response, log_exception
 from app.core.config import settings
 import redis
 
@@ -18,12 +18,30 @@ class LLMService:
     
     def __init__(self, timeout: int = 120):
         self.timeout = timeout
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=6379,
-            db=1,  # Use different DB for recommendations
-            decode_responses=True
-        )
+        logger.info("Initializing LLM service",
+                   timeout=timeout,
+                   redis_host=settings.redis_host,
+                   redis_port=6379,
+                   redis_db=1)
+        
+        try:
+            self.redis_client = redis.Redis(
+                host=settings.redis_host,
+                port=6379,
+                db=1,  # Use different DB for recommendations
+                decode_responses=True
+            )
+            # Test Redis connection
+            self.redis_client.ping()
+            logger.info("Redis connection established successfully",
+                       service="llm_service",
+                       redis_host=settings.redis_host)
+        except Exception as e:
+            logger.error("Failed to connect to Redis",
+                        service="llm_service",
+                        redis_host=settings.redis_host,
+                        error=str(e))
+            raise
         # Action weights for ranking score calculation
         self.ACTION_WEIGHTS = {
             "liked": 2.0,
@@ -214,6 +232,18 @@ class LLMService:
         """
         Call the actual LLM API to generate recommendations
         """
+        start_time = time.time()
+        
+        # Log API call initiation
+        log_api_call(
+            service_name="llm_api",
+            endpoint="/process-text",
+            method="POST",
+            user_id=user_id,
+            prompt_length=len(prompt),
+            provider=settings.recommendation_api_provider
+        )
+        
         try:
             payload = {
                 "text": prompt,
@@ -231,33 +261,92 @@ class LLMService:
                 result = response.json()
                 raw_result = result.get("result")
                 
+                response_time = time.time() - start_time
+                
                 if raw_result is None:
-                    logger.warning("Empty result field from LLM API")
+                    logger.warning("Empty result field from LLM API",
+                                 user_id=user_id,
+                                 response_time_ms=response_time * 1000)
+                    log_api_response("llm_api", "/process-text", False, 
+                                   status_code=response.status_code, 
+                                   response_time=response_time,
+                                   user_id=user_id,
+                                   error="empty_result")
                     return self._get_fallback_recommendations()
                 
                 if isinstance(raw_result, dict):
+                    log_api_response("llm_api", "/process-text", True,
+                                   status_code=response.status_code,
+                                   response_time=response_time,
+                                   user_id=user_id)
                     return self._process_llm_recommendations(raw_result, user_id, current_city)
                 
                 if isinstance(raw_result, str):
                     parsed = self._robust_parse_json(raw_result)
                     if parsed is not None:
+                        log_api_response("llm_api", "/process-text", True,
+                                       status_code=response.status_code,
+                                       response_time=response_time,
+                                       user_id=user_id)
                         return self._process_llm_recommendations(parsed, user_id, current_city)
                     
-                    logger.info("LLM response is not valid JSON, attempting text parsing")
+                    logger.info("LLM response is not valid JSON, attempting text parsing",
+                               user_id=user_id,
+                               response_time_ms=response_time * 1000)
                     recommendations = self._parse_text_response(raw_result)
+                    log_api_response("llm_api", "/process-text", True,
+                                   status_code=response.status_code,
+                                   response_time=response_time,
+                                   user_id=user_id,
+                                   parsing_method="text")
                     return self._process_llm_recommendations(recommendations, user_id, current_city)
                 
-                logger.error(f"Unexpected type for LLM result: {type(raw_result)}")
+                logger.error("Unexpected type for LLM result",
+                           user_id=user_id,
+                           result_type=type(raw_result).__name__,
+                           response_time_ms=response_time * 1000)
+                log_api_response("llm_api", "/process-text", False,
+                               status_code=response.status_code,
+                               response_time=response_time,
+                               user_id=user_id,
+                               error="unexpected_result_type")
                 return self._get_fallback_recommendations()
                     
-        except httpx.TimeoutException:
-            logger.error("Timeout calling LLM API")
+        except httpx.TimeoutException as e:
+            response_time = time.time() - start_time
+            logger.error("Timeout calling LLM API",
+                        user_id=user_id,
+                        timeout_seconds=self.timeout,
+                        response_time_ms=response_time * 1000)
+            log_api_response("llm_api", "/process-text", False,
+                           response_time=response_time,
+                           user_id=user_id,
+                           error="timeout")
             return self._get_fallback_recommendations()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling LLM API: {e.response.status_code} - {e.response.text}")
+            response_time = time.time() - start_time
+            logger.error("HTTP error calling LLM API",
+                        user_id=user_id,
+                        status_code=e.response.status_code,
+                        response_text=e.response.text,
+                        response_time_ms=response_time * 1000)
+            log_api_response("llm_api", "/process-text", False,
+                           status_code=e.response.status_code,
+                           response_time=response_time,
+                           user_id=user_id,
+                           error="http_error")
             return self._get_fallback_recommendations()
         except Exception as e:
-            logger.error(f"Unexpected error calling LLM API: {str(e)}")
+            response_time = time.time() - start_time
+            logger.error("Unexpected error calling LLM API",
+                        user_id=user_id,
+                        error=str(e),
+                        response_time_ms=response_time * 1000)
+            log_exception("llm_service", e, {"user_id": user_id, "response_time": response_time})
+            log_api_response("llm_api", "/process-text", False,
+                           response_time=response_time,
+                           user_id=user_id,
+                           error="unexpected_error")
             return self._get_fallback_recommendations()
     
     def _parse_text_response(self, response_text: str) -> Dict[str, List[Dict]]:
@@ -470,12 +559,26 @@ class LLMService:
         """Store recommendations in Redis"""
         try:
             key = f"recommendations:{user_id}"
+            data_size = len(json.dumps(data, default=str))
+            
+            logger.info("Storing recommendations in Redis",
+                       user_id=user_id,
+                       key=key,
+                       data_size_bytes=data_size,
+                       ttl_seconds=86400)
+            
             self.redis_client.setex(
                 key,
                 86400,
                 json.dumps(data, default=str)
             )
-            logger.info(f"Stored recommendations in Redis for user {user_id}")
+            
+            logger.info("Recommendations stored successfully in Redis",
+                       user_id=user_id,
+                       key=key,
+                       data_size_bytes=data_size)
+            
+            # Publish notification
             try:
                 notify_payload = {
                     "type": "notification",
@@ -484,22 +587,50 @@ class LLMService:
                 }
                 pub_client = redis.Redis(host=settings.redis_host, port=6379, db=0, decode_responses=True)
                 pub_client.publish("notifications:user", json.dumps(notify_payload))
-                logger.info(f"Published notification for user {user_id} on notifications:user")
+                
+                logger.info("Notification published successfully",
+                           user_id=user_id,
+                           channel="notifications:user",
+                           notification_type="recommendations_ready")
             except Exception as pub_err:
-                logger.error(f"Failed to publish notification for user {user_id}: {pub_err}")
+                logger.error("Failed to publish notification",
+                            user_id=user_id,
+                            error=str(pub_err),
+                            channel="notifications:user")
         except Exception as e:
-            logger.error(f"Error storing in Redis: {str(e)}")
+            logger.error("Error storing recommendations in Redis",
+                        user_id=user_id,
+                        key=key,
+                        error=str(e))
+            log_exception("llm_service", e, {"user_id": user_id, "operation": "store_redis"})
     
     def get_recommendations_from_redis(self, user_id: str) -> Dict[str, Any]:
         """Retrieve recommendations from Redis"""
         try:
             key = f"recommendations:{user_id}"
+            logger.info("Retrieving recommendations from Redis",
+                       user_id=user_id,
+                       key=key)
+            
             data = self.redis_client.get(key)
             if data:
+                data_size = len(data)
+                logger.info("Recommendations retrieved successfully from Redis",
+                           user_id=user_id,
+                           key=key,
+                           data_size_bytes=data_size)
                 return json.loads(data)
-            return None
+            else:
+                logger.info("No recommendations found in Redis",
+                           user_id=user_id,
+                           key=key)
+                return None
         except Exception as e:
-            logger.error(f"Error retrieving from Redis: {str(e)}")
+            logger.error("Error retrieving recommendations from Redis",
+                        user_id=user_id,
+                        key=key,
+                        error=str(e))
+            log_exception("llm_service", e, {"user_id": user_id, "operation": "get_redis"})
             return None
     
     def clear_recommendations(self, user_id: str = None):
@@ -507,15 +638,30 @@ class LLMService:
         try:
             if user_id:
                 key = f"recommendations:{user_id}"
-                self.redis_client.delete(key)
-                logger.info(f"Cleared recommendations for user {user_id}")
+                logger.info("Clearing recommendations for specific user",
+                           user_id=user_id,
+                           key=key)
+                
+                deleted_count = self.redis_client.delete(key)
+                logger.info("Recommendations cleared successfully",
+                           user_id=user_id,
+                           key=key,
+                           deleted_count=deleted_count)
             else:
+                logger.info("Clearing all recommendations from Redis")
                 keys = self.redis_client.keys("recommendations:*")
                 if keys:
-                    self.redis_client.delete(*keys)
-                    logger.info(f"Cleared all recommendations ({len(keys)} keys)")
+                    deleted_count = self.redis_client.delete(*keys)
+                    logger.info("All recommendations cleared successfully",
+                               total_keys=len(keys),
+                               deleted_count=deleted_count)
+                else:
+                    logger.info("No recommendation keys found to clear")
         except Exception as e:
-            logger.error(f"Error clearing recommendations: {str(e)}")
+            logger.error("Error clearing recommendations from Redis",
+                        user_id=user_id,
+                        error=str(e))
+            log_exception("llm_service", e, {"user_id": user_id, "operation": "clear_redis"})
 
 
 llm_service = LLMService(timeout=120)

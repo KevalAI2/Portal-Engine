@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from app.services.base import BaseService
 from app.models.schemas import InteractionData
 from app.core.config import settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception, LoggingMixin
 
 
 class CISService(BaseService):
@@ -319,7 +319,10 @@ class CISService(BaseService):
     async def get_interaction_data(self, user_id: str) -> Optional[InteractionData]:
         """Fetch interaction data for a user - now generates comprehensive mock data"""
         try:
-            self.logger.info("Generating mock interaction data", user_id=user_id)
+            self.logger.info("Generating mock interaction data", 
+                           user_id=user_id,
+                           service="cis_service",
+                           operation="generate_interaction_data")
             
             # Generate comprehensive mock interaction data
             interaction_data = self._generate_mock_interaction_data(user_id)
@@ -336,13 +339,21 @@ class CISService(BaseService):
             self.logger.info("Mock interaction data generated successfully", 
                            user_id=user_id, 
                            engagement_score=interaction_data["engagement_score"],
-                           data_confidence=interaction_data["data_confidence"])
+                           data_confidence=interaction_data["data_confidence"],
+                           recent_interactions_count=len(interaction_data["recent_interactions"]),
+                           interaction_history_count=len(interaction_data["interaction_history"]),
+                           service="cis_service",
+                           operation="generate_interaction_data")
             
             return interaction_obj
             
         except Exception as e:
             self.logger.error("Failed to generate mock interaction data", 
-                            user_id=user_id, error=str(e))
+                            user_id=user_id, 
+                            error=str(e),
+                            service="cis_service",
+                            operation="generate_interaction_data")
+            log_exception("cis_service", e, {"user_id": user_id, "operation": "generate_interaction_data"})
             return None
     
 

@@ -4,7 +4,7 @@ Users API router
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import Response
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception, log_api_call, log_api_response
 from app.models.schemas import UserProfile, LocationData, InteractionData
 from app.models.responses import APIResponse
 from app.models.requests import (
@@ -82,9 +82,12 @@ async def get_user_profile(
     - **user_id**: User identifier
     """
     try:
-        logger.info("Getting user profile", user_id=user_id)
+        log_api_call("user_profile_service", f"/{user_id}/profile", "GET", user_id=user_id)
+        logger.info("Getting user profile", user_id=user_id, endpoint="get_user_profile")
         
         if not user_service:
+            log_api_response("user_profile_service", f"/{user_id}/profile", False, 
+                           user_id=user_id, error="service_unavailable")
             return APIResponse.service_unavailable_response(
                 message="User profile service temporarily unavailable",
                 service="user_profile"
@@ -93,19 +96,35 @@ async def get_user_profile(
         user_profile = await user_service.get_user_profile(user_id)
         
         if not user_profile:
+            log_api_response("user_profile_service", f"/{user_id}/profile", False, 
+                           user_id=user_id, error="user_not_found")
             return APIResponse.error_response(
                 message=f"User profile not found for user_id: {user_id}",
                 status_code=404
             )
         
-        logger.info("Retrieved user profile", user_id=user_id)
+        log_api_response("user_profile_service", f"/{user_id}/profile", True, 
+                        user_id=user_id, 
+                        profile_name=user_profile.name,
+                        profile_email=user_profile.email)
+        logger.info("Retrieved user profile", 
+                   user_id=user_id, 
+                   profile_name=user_profile.name,
+                   profile_email=user_profile.email,
+                   endpoint="get_user_profile")
         return APIResponse.success_response(
             data=user_profile,
             message="User profile retrieved successfully"
         )
         
     except Exception as e:
-        logger.error("Error getting user profile", user_id=user_id, error=str(e))
+        log_api_response("user_profile_service", f"/{user_id}/profile", False, 
+                        user_id=user_id, error=str(e))
+        logger.error("Error getting user profile", 
+                   user_id=user_id, 
+                   error=str(e),
+                   endpoint="get_user_profile")
+        log_exception("users_router", e, {"user_id": user_id, "endpoint": "get_user_profile"})
         return APIResponse.error_response(
             message="Failed to retrieve user profile",
             status_code=500,
@@ -127,9 +146,12 @@ async def get_user_location_data(
     - **user_id**: User identifier
     """
     try:
-        logger.info("Getting user location data", user_id=user_id)
+        log_api_call("lie_service", f"/{user_id}/location", "GET", user_id=user_id)
+        logger.info("Getting user location data", user_id=user_id, endpoint="get_user_location")
         
         if not lie_service:
+            log_api_response("lie_service", f"/{user_id}/location", False, 
+                           user_id=user_id, error="service_unavailable")
             return APIResponse.service_unavailable_response(
                 message="Location service temporarily unavailable",
                 service="lie"
@@ -138,19 +160,35 @@ async def get_user_location_data(
         location_data = await lie_service.get_location_data(user_id)
         
         if not location_data:
+            log_api_response("lie_service", f"/{user_id}/location", False, 
+                           user_id=user_id, error="location_data_not_found")
             return APIResponse.error_response(
                 message=f"Location data not found for user_id: {user_id}",
                 status_code=404
             )
         
-        logger.info("Retrieved user location data", user_id=user_id)
+        log_api_response("lie_service", f"/{user_id}/location", True, 
+                        user_id=user_id, 
+                        current_location=location_data.current_location,
+                        home_location=location_data.home_location)
+        logger.info("Retrieved user location data", 
+                   user_id=user_id, 
+                   current_location=location_data.current_location,
+                   home_location=location_data.home_location,
+                   endpoint="get_user_location")
         return APIResponse.success_response(
             data=location_data,
             message="Location data retrieved successfully"
         )
         
     except Exception as e:
-        logger.error("Error getting user location data", user_id=user_id, error=str(e))
+        log_api_response("lie_service", f"/{user_id}/location", False, 
+                        user_id=user_id, error=str(e))
+        logger.error("Error getting user location data", 
+                   user_id=user_id, 
+                   error=str(e),
+                   endpoint="get_user_location")
+        log_exception("users_router", e, {"user_id": user_id, "endpoint": "get_user_location"})
         return APIResponse.error_response(
             message="Failed to retrieve user location data",
             status_code=500,
@@ -169,24 +207,41 @@ async def get_user_interaction_data(user_id: str):
     - **user_id**: User identifier
     """
     try:
-        logger.info("Getting user interaction data", user_id=user_id)
+        log_api_call("cis_service", f"/{user_id}/interactions", "GET", user_id=user_id)
+        logger.info("Getting user interaction data", user_id=user_id, endpoint="get_user_interactions")
         
         cis_service = CISService(timeout=30)
         interaction_data = await cis_service.get_interaction_data(user_id)
         
         if not interaction_data:
+            log_api_response("cis_service", f"/{user_id}/interactions", False, 
+                           user_id=user_id, error="interaction_data_not_found")
             raise HTTPException(
                 status_code=404,
                 detail=f"Interaction data not found for user_id: {user_id}"
             )
         
-        logger.info("Retrieved user interaction data", user_id=user_id)
+        log_api_response("cis_service", f"/{user_id}/interactions", True, 
+                        user_id=user_id, 
+                        engagement_score=interaction_data.engagement_score,
+                        recent_interactions_count=len(interaction_data.recent_interactions))
+        logger.info("Retrieved user interaction data", 
+                   user_id=user_id, 
+                   engagement_score=interaction_data.engagement_score,
+                   recent_interactions_count=len(interaction_data.recent_interactions),
+                   endpoint="get_user_interactions")
         return interaction_data
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error getting user interaction data", user_id=user_id, error=str(e))
+        log_api_response("cis_service", f"/{user_id}/interactions", False, 
+                        user_id=user_id, error=str(e))
+        logger.error("Error getting user interaction data", 
+                   user_id=user_id, 
+                   error=str(e),
+                   endpoint="get_user_interactions")
+        log_exception("users_router", e, {"user_id": user_id, "endpoint": "get_user_interactions"})
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve user interaction data"
@@ -205,7 +260,12 @@ async def process_user_comprehensive_endpoint(user_id: str, priority: int = 5):
     - **priority**: Processing priority (1-10, default: 5)
     """
     try:
-        logger.info("Enqueueing user for comprehensive processing", user_id=user_id, priority=priority)
+        log_api_call("celery_queue", f"/{user_id}/process-comprehensive", "POST", 
+                    user_id=user_id, priority=priority)
+        logger.info("Enqueueing user for comprehensive processing", 
+                   user_id=user_id, 
+                   priority=priority,
+                   endpoint="process_user_comprehensive")
         
         # Enqueue the user for comprehensive processing directly
         result = process_user_comprehensive.apply_async(
@@ -223,7 +283,15 @@ async def process_user_comprehensive_endpoint(user_id: str, priority: int = 5):
             }
         )
         
-        logger.info("User enqueued for comprehensive processing", user_id=user_id, task_id=result.id)
+        log_api_response("celery_queue", f"/{user_id}/process-comprehensive", True, 
+                        user_id=user_id, 
+                        task_id=result.id,
+                        priority=priority)
+        logger.info("User enqueued for comprehensive processing", 
+                   user_id=user_id, 
+                   task_id=result.id,
+                   priority=priority,
+                   endpoint="process_user_comprehensive")
         
         return {
             "success": True,
@@ -236,7 +304,13 @@ async def process_user_comprehensive_endpoint(user_id: str, priority: int = 5):
         }
         
     except Exception as e:
-        logger.error("Error enqueueing user for comprehensive processing", user_id=user_id, error=str(e))
+        log_api_response("celery_queue", f"/{user_id}/process-comprehensive", False, 
+                        user_id=user_id, error=str(e))
+        logger.error("Error enqueueing user for comprehensive processing", 
+                   user_id=user_id, 
+                   error=str(e),
+                   endpoint="process_user_comprehensive")
+        log_exception("users_router", e, {"user_id": user_id, "endpoint": "process_user_comprehensive"})
         raise HTTPException(
             status_code=500,
             detail=f"Failed to enqueue user {user_id} for comprehensive processing"
@@ -387,7 +461,7 @@ async def generate_recommendations_endpoint(
                 recommendation_type=RecommendationType.PLACE,
                 max_results=5,
             )
-            print('prompt: ', prompt)
+            logger.info("Generated prompt for user", user_id=user_id, prompt_length=len(prompt) if prompt else 0)
         response = await llm_service.generate_recommendations(prompt, user_id)
         
         if response.get("success", False):

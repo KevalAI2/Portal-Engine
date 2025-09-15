@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.services.base import BaseService
 from app.models.schemas import UserProfile
 from app.core.config import settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_exception, LoggingMixin
 
 
 class UserProfileService(BaseService):
@@ -285,7 +285,10 @@ class UserProfileService(BaseService):
     async def get_user_profile(self, user_id: str) -> Optional[UserProfile]:
         """Fetch user profile data - generates schema-based mock data"""
         try:
-            self.logger.info("Generating schema-based mock user profile", user_id=user_id)
+            self.logger.info("Generating schema-based mock user profile", 
+                           user_id=user_id,
+                           service="user_profile",
+                           operation="generate_profile")
             
             # Generate comprehensive mock profile data
             profile_data = self._generate_schema_based_profile(user_id)
@@ -303,13 +306,21 @@ class UserProfileService(BaseService):
             
             self.logger.info("Schema-based mock user profile generated successfully", 
                            user_id=user_id, 
-                           profile_completeness=profile_data["profile_completeness"])
+                           profile_completeness=profile_data["profile_completeness"],
+                           interests_count=len(profile_data["interests"]),
+                           preferences_count=len(profile_data["preferences"]),
+                           service="user_profile",
+                           operation="generate_profile")
             
             return user_profile
             
         except Exception as e:
             self.logger.error("Failed to generate schema-based mock user profile", 
-                            user_id=user_id, error=str(e))
+                            user_id=user_id, 
+                            error=str(e),
+                            service="user_profile",
+                            operation="generate_profile")
+            log_exception("user_profile_service", e, {"user_id": user_id, "operation": "generate_profile"})
             return None
     
 

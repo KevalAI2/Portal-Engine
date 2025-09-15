@@ -5,7 +5,7 @@ import asyncio
 import os
 from typing import Dict, Any, List
 from app.workers.celery_app import celery_app
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_background_task, log_exception
 from app.core.config import settings
 from app.core.constants import RecommendationType
 from app.services.user_profile import UserProfileService
@@ -21,8 +21,11 @@ logger = get_logger("celery_tasks")
 @celery_app.task(bind=True, name="fetch_user_data")
 def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
     """Fetch user data from external services"""
+    task_id = self.request.id
+    log_background_task("fetch_user_data", task_id, "started", user_id=user_id)
+    
     try:
-        logger.info("Starting user data fetch", user_id=user_id, task_id=self.request.id)
+        logger.info("Starting user data fetch", user_id=user_id, task_id=task_id)
         
         # Create service instances
         user_service = UserProfileService(timeout=30)
@@ -47,7 +50,8 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
                 "fetched_at": asyncio.get_event_loop().time()
             }
             
-            logger.info("User data fetch completed", user_id=user_id, task_id=self.request.id)
+            log_background_task("fetch_user_data", task_id, "completed", user_id=user_id)
+            logger.info("User data fetch completed", user_id=user_id, task_id=task_id)
             
             return {
                 "success": True,
@@ -59,7 +63,9 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
             loop.close()
             
     except Exception as e:
-        logger.error("User data fetch failed", user_id=user_id, task_id=self.request.id, error=str(e))
+        log_background_task("fetch_user_data", task_id, "failed", user_id=user_id, error=str(e))
+        logger.error("User data fetch failed", user_id=user_id, task_id=task_id, error=str(e))
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "fetch_user_data", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -70,8 +76,11 @@ def fetch_user_data(self, user_id: str) -> Dict[str, Any]:
 @celery_app.task(bind=True, name="build_prompt")
 def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> Dict[str, Any]:
     """Build dynamic prompt for recommendation generation"""
+    task_id = self.request.id
+    log_background_task("build_prompt", task_id, "started", recommendation_type=recommendation_type)
+    
     try:
-        logger.info("Building prompt", recommendation_type=recommendation_type, task_id=self.request.id)
+        logger.info("Building prompt", recommendation_type=recommendation_type, task_id=task_id)
         
         # Validate recommendation type
         if recommendation_type not in [rt.value for rt in RecommendationType]:
@@ -116,7 +125,13 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
                 max_results=10
             )
         
-        logger.info("Prompt built successfully", recommendation_type=recommendation_type, task_id=self.request.id)
+        log_background_task("build_prompt", task_id, "completed", 
+                           recommendation_type=recommendation_type, 
+                           prompt_length=len(prompt))
+        logger.info("Prompt built successfully", 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id,
+                   prompt_length=len(prompt))
         
         return {
             "success": True,
@@ -126,7 +141,14 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
         }
         
     except Exception as e:
-        logger.error("Prompt building failed", recommendation_type=recommendation_type, task_id=self.request.id, error=str(e))
+        log_background_task("build_prompt", task_id, "failed", 
+                           recommendation_type=recommendation_type, 
+                           error=str(e))
+        logger.error("Prompt building failed", 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id, 
+                   error=str(e))
+        log_exception("celery_tasks", e, {"recommendation_type": recommendation_type, "task": "build_prompt", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -137,8 +159,11 @@ def build_prompt(self, user_data: Dict[str, Any], recommendation_type: str) -> D
 @celery_app.task(bind=True, name="call_llm")
 def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_type: str) -> Dict[str, Any]:
     """Call LLM service to generate recommendations"""
+    task_id = self.request.id
+    log_background_task("call_llm", task_id, "started", recommendation_type=recommendation_type)
+    
     try:
-        logger.info("Calling LLM service", recommendation_type=recommendation_type, task_id=self.request.id)
+        logger.info("Calling LLM service", recommendation_type=recommendation_type, task_id=task_id)
         
         # Run async operation
         loop = asyncio.new_event_loop()
@@ -157,7 +182,13 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
             if not recommendations:
                 raise ValueError("No recommendations generated by LLM")
             
-            logger.info("LLM call completed", recommendation_type=recommendation_type, task_id=self.request.id, count=len(recommendations))
+            log_background_task("call_llm", task_id, "completed", 
+                               recommendation_type=recommendation_type, 
+                               recommendations_count=len(recommendations))
+            logger.info("LLM call completed", 
+                       recommendation_type=recommendation_type, 
+                       task_id=task_id, 
+                       count=len(recommendations))
             
             return {
                 "success": True,
@@ -170,7 +201,14 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
             loop.close()
             
     except Exception as e:
-        logger.error("LLM call failed", recommendation_type=recommendation_type, task_id=self.request.id, error=str(e))
+        log_background_task("call_llm", task_id, "failed", 
+                           recommendation_type=recommendation_type, 
+                           error=str(e))
+        logger.error("LLM call failed", 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id, 
+                   error=str(e))
+        log_exception("celery_tasks", e, {"recommendation_type": recommendation_type, "task": "call_llm", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -181,8 +219,18 @@ def call_llm(self, prompt: str, user_context: Dict[str, Any], recommendation_typ
 @celery_app.task(bind=True, name="cache_results")
 def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], recommendation_type: str) -> Dict[str, Any]:
     """Cache recommendation results in Redis"""
+    task_id = self.request.id
+    log_background_task("cache_results", task_id, "started", 
+                       user_id=user_id, 
+                       recommendation_type=recommendation_type,
+                       recommendations_count=len(recommendations))
+    
     try:
-        logger.info("Caching results", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
+        logger.info("Caching results", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id,
+                   recommendations_count=len(recommendations))
         
         # Run async operation
         loop = asyncio.new_event_loop()
@@ -201,7 +249,15 @@ def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], rec
             if not success:
                 raise ValueError("Failed to store recommendations in cache")
             
-            logger.info("Results cached successfully", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
+            log_background_task("cache_results", task_id, "completed", 
+                               user_id=user_id, 
+                               recommendation_type=recommendation_type,
+                               cached_count=len(recommendations))
+            logger.info("Results cached successfully", 
+                       user_id=user_id, 
+                       recommendation_type=recommendation_type, 
+                       task_id=task_id,
+                       cached_count=len(recommendations))
             
             return {
                 "success": True,
@@ -215,7 +271,16 @@ def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], rec
             loop.close()
             
     except Exception as e:
-        logger.error("Caching failed", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id, error=str(e))
+        log_background_task("cache_results", task_id, "failed", 
+                           user_id=user_id, 
+                           recommendation_type=recommendation_type,
+                           error=str(e))
+        logger.error("Caching failed", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id, 
+                   error=str(e))
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "cache_results", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -226,8 +291,18 @@ def cache_results(self, user_id: str, recommendations: List[Dict[str, Any]], rec
 @celery_app.task(bind=True, name="generate_recommendations")
 def generate_recommendations(self, user_id: str, recommendation_type: str, force_refresh: bool = False) -> Dict[str, Any]:
     """Complete recommendation generation workflow"""
+    task_id = self.request.id
+    log_background_task("generate_recommendations", task_id, "started", 
+                       user_id=user_id, 
+                       recommendation_type=recommendation_type,
+                       force_refresh=force_refresh)
+    
     try:
-        logger.info("Starting recommendation generation", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
+        logger.info("Starting recommendation generation", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id,
+                   force_refresh=force_refresh)
         
         # Check cache first (unless force refresh)
         if not force_refresh:
@@ -286,7 +361,15 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
         if not cache_result.result.get("success"):
             raise Exception(f"Failed to cache results: {cache_result.result.get('error')}")
         
-        logger.info("Recommendation generation completed", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
+        log_background_task("generate_recommendations", task_id, "completed", 
+                           user_id=user_id, 
+                           recommendation_type=recommendation_type,
+                           recommendations_count=len(recommendations))
+        logger.info("Recommendation generation completed", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id,
+                   recommendations_count=len(recommendations))
         
         return {
             "success": True,
@@ -298,7 +381,16 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
         }
         
     except Exception as e:
-        logger.error("Recommendation generation failed", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id, error=str(e))
+        log_background_task("generate_recommendations", task_id, "failed", 
+                           user_id=user_id, 
+                           recommendation_type=recommendation_type,
+                           error=str(e))
+        logger.error("Recommendation generation failed", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id, 
+                   error=str(e))
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "generate_recommendations", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -308,12 +400,22 @@ def generate_recommendations(self, user_id: str, recommendation_type: str, force
 @celery_app.task(bind=True, name="process_user", acks_late=True, reject_on_worker_lost=True)
 def process_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
     """Consumer task: process each user independently on separate worker"""
+    task_id = self.request.id
+    user_id = user.get('id')
+    user_name = user.get('name')
+    priority = user.get('priority', 0)
+    
+    log_background_task("process_user", task_id, "started", 
+                       user_id=user_id, 
+                       user_name=user_name,
+                       priority=priority)
+    
     try:
-        user_id = user.get('id')
-        user_name = user.get('name')
-        priority = user.get('priority', 0)
-        
-        logger.info("Processing user", user_id=user_id, user_name=user_name, task_id=self.request.id)
+        logger.info("Processing user", 
+                   user_id=user_id, 
+                   user_name=user_name, 
+                   task_id=task_id,
+                   priority=priority)
         
         # Get worker info for independent processing tracking
         worker_id = self.request.hostname
@@ -323,17 +425,24 @@ def process_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
         import time
         time.sleep(0.1)  # 100ms processing time
         
-        # Enhanced console output for independent worker visibility
-        print(f"\n🔧 INDEPENDENT WORKER PROCESSING:")
-        print(f"   👤 User: {user_id} - {user_name}")
-        print(f"   🔧 Worker: {worker_id} (PID: {worker_pid})")
-        print(f"   📋 Task ID: {self.request.id}")
-        print(f"   🎯 Priority: {priority}")
-        print(f"   ⏱️  Processing time: 100ms")
-        print(f"   ✅ Status: Completed independently")
-        print(f"   💬 Message: Hello World! User {user_name} processed on dedicated worker\n")
+        # Log worker processing details
+        logger.info("Independent worker processing completed",
+                   user_id=user_id,
+                   user_name=user_name,
+                   worker_id=worker_id,
+                   worker_pid=worker_pid,
+                   task_id=self.request.id,
+                   priority=priority,
+                   processing_time_ms=100,
+                   status="completed_independently")
         
         logger.info("User processing completed independently", user_id=user_id, worker_id=worker_id, task_id=self.request.id)
+        
+        log_background_task("process_user", task_id, "completed", 
+                           user_id=user_id, 
+                           user_name=user_name,
+                           worker_id=worker_id,
+                           priority=priority)
         
         return {
             "success": True,
@@ -343,12 +452,20 @@ def process_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
             "worker_pid": worker_pid,
             "priority": priority,
             "processed_at": time.time(),
-            "task_id": self.request.id,
+            "task_id": task_id,
             "message": f"Hello World! User {user_name} processed on dedicated worker"
         }
         
     except Exception as e:
-        logger.error("User processing failed", user_id=user.get('id'), task_id=self.request.id, error=str(e))
+        log_background_task("process_user", task_id, "failed", 
+                           user_id=user_id, 
+                           user_name=user_name,
+                           error=str(e))
+        logger.error("User processing failed", 
+                   user_id=user_id, 
+                   task_id=task_id, 
+                   error=str(e))
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "process_user", "task_id": task_id})
         return {
             "success": False,
             "error": str(e),
@@ -362,12 +479,22 @@ def get_users(self, count: int = 5, delay: int = 1) -> Dict[str, Any]:
     Producer task: generate dummy users and enqueue them for independent processing
     Each user gets assigned to a separate worker for parallel processing
     """
-    logger.info("Starting user generation", count=count, delay=delay, task_id=self.request.id)
+    task_id = self.request.id
+    log_background_task("get_users", task_id, "started", 
+                       count=count, 
+                       delay=delay)
     
-    print(f"\n🎯 PRODUCER TASK: Generating {count} users (Task ID: {self.request.id})")
-    print(f"   ⏰ Interval: Every {settings.task_interval_seconds} seconds")
-    print(f"   🔧 Workers: {settings.celery_worker_concurrency} concurrent workers")
-    print(f"   🚀 Strategy: Each user → Separate worker (Independent processing)\n")
+    logger.info("Starting user generation", 
+               count=count, 
+               delay=delay, 
+               task_id=task_id)
+    
+    logger.info("Producer task started",
+               count=count,
+               task_id=self.request.id,
+               interval_seconds=settings.task_interval_seconds,
+               worker_concurrency=settings.celery_worker_concurrency,
+               strategy="independent_processing")
 
     for i in range(1, count + 1):
         user = {
@@ -379,7 +506,11 @@ def get_users(self, count: int = 5, delay: int = 1) -> Dict[str, Any]:
         }
         logger.info("Generated user", user_id=i, user_name=user["name"])
         
-        print(f"📤 QUEUING: User-{i} → RabbitMQ → Independent Worker")
+        logger.info("Queuing user for processing",
+                   user_id=i,
+                   user_name=user["name"],
+                   queue="user_processing",
+                   routing_key=f"user_processing_{i % settings.celery_worker_concurrency}")
 
         # Send into RabbitMQ → Each user gets a separate worker
         # Using apply_async with routing_key based on user ID for worker isolation
@@ -401,8 +532,13 @@ def get_users(self, count: int = 5, delay: int = 1) -> Dict[str, Any]:
         if delay > 0:
             time.sleep(delay)
 
-    logger.info("User generation completed", count=count, task_id=self.request.id)
-    print(f"✅ PRODUCER COMPLETED: {count} users queued for independent processing\n")
+    log_background_task("get_users", task_id, "completed", 
+                       count=count, 
+                       generated_count=count)
+    logger.info("User generation completed", 
+               count=count, 
+               task_id=task_id,
+               status="producer_completed")
     return {"success": True, "generated_count": count}
 
 
@@ -415,18 +551,24 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
     - Processes and combines all data
     - Returns comprehensive user insights
     """
+    task_id = self.request.id
+    log_background_task("process_user_comprehensive", task_id, "started", user_id=user_id)
+    
     try:
-        logger.info("Starting comprehensive user processing", user_id=user_id, task_id=self.request.id)
+        logger.info("Starting comprehensive user processing", 
+                   user_id=user_id, 
+                   task_id=task_id)
         
         # Get worker info for tracking
         worker_id = self.request.hostname
         worker_pid = os.getpid()
         
-        print(f"\n🔍 COMPREHENSIVE USER PROCESSING:")
-        print(f"   👤 User ID: {user_id}")
-        print(f"   🔧 Worker: {worker_id} (PID: {worker_pid})")
-        print(f"   📋 Task ID: {self.request.id}")
-        print(f"   🚀 Status: Fetching user data from all services...\n")
+        logger.info("Comprehensive user processing started",
+                   user_id=user_id,
+                   worker_id=worker_id,
+                   worker_pid=worker_pid,
+                   task_id=self.request.id,
+                   status="fetching_user_data")
         
         # Create service instances
         user_service = UserProfileService(timeout=30)
@@ -438,33 +580,48 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
         asyncio.set_event_loop(loop)
         
         try:
-            print(f"📊 FETCHING DATA:")
-            print(f"   🔄 User Profile Service...")
+            logger.info("Fetching user data from all services",
+                       user_id=user_id,
+                       services=["user_profile", "location_intelligence", "content_interaction"])
             
             # Fetch user profile data
+            logger.info("Fetching user profile data", user_id=user_id, service="user_profile")
             user_profile = loop.run_until_complete(user_service.get_user_profile(user_id))
             if not user_profile:
                 raise Exception(f"Failed to fetch user profile for user_id: {user_id}")
             
-            print(f"   ✅ User Profile: {user_profile.name} ({user_profile.email})")
-            print(f"   🔄 Location Intelligence Service...")
+            logger.info("User profile data fetched successfully",
+                       user_id=user_id,
+                       user_name=user_profile.name,
+                       user_email=user_profile.email,
+                       service="user_profile")
             
             # Fetch location data
+            logger.info("Fetching location data", user_id=user_id, service="location_intelligence")
             location_data = loop.run_until_complete(lie_service.get_location_data(user_id))
             if not location_data:
                 raise Exception(f"Failed to fetch location data for user_id: {user_id}")
             
-            print(f"   ✅ Location: {location_data.current_location} (Home: {location_data.home_location})")
-            print(f"   🔄 Content Interaction Service...")
+            logger.info("Location data fetched successfully",
+                       user_id=user_id,
+                       current_location=location_data.current_location,
+                       home_location=location_data.home_location,
+                       service="location_intelligence")
             
             # Fetch interaction data
+            logger.info("Fetching interaction data", user_id=user_id, service="content_interaction")
             interaction_data = loop.run_until_complete(cis_service.get_interaction_data(user_id))
             if not interaction_data:
                 raise Exception(f"Failed to fetch interaction data for user_id: {user_id}")
             
-            print(f"   ✅ Engagement Score: {interaction_data.engagement_score:.2f}")
+            logger.info("Interaction data fetched successfully",
+                       user_id=user_id,
+                       engagement_score=interaction_data.engagement_score,
+                       service="content_interaction")
             
-            print(f"   ✅ All data fetched successfully!\n")
+            logger.info("All user data fetched successfully",
+                       user_id=user_id,
+                       status="data_fetch_complete")
             
             # Combine all data into comprehensive user profile
             comprehensive_data = {
@@ -528,8 +685,10 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
             comprehensive_data["processing_info"]["processing_duration_ms"] = int((time.time() - comprehensive_data["processing_info"]["processed_at"]) * 1000)
             
             # Generate prompt using all the collected data
-            print(f"🤖 GENERATING PROMPT:")
-            print(f"   🔄 Building personalized prompt...")
+            logger.info("Generating personalized prompt",
+                       user_id=user_id,
+                       recommendation_type="PLACE",
+                       max_results=5)
             
             prompt_builder = PromptBuilder()
             
@@ -542,22 +701,20 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
                 max_results=5
             )
             
-            print(f"   ✅ Prompt generated successfully!")
-            print(f"   📝 Prompt length: {len(generated_prompt)} characters")
+            logger.info("Prompt generated successfully",
+                       user_id=user_id,
+                       prompt_length=len(generated_prompt),
+                       recommendation_type="PLACE")
             
             # Log the actual prompt content (first 500 chars for readability)
             prompt_preview = generated_prompt[:500] + "..." if len(generated_prompt) > 500 else generated_prompt
-            print(f"   📄 Prompt Preview:")
-            print(f"   {'='*50}")
-            print(f"   {prompt_preview}")
-            print(f"   {'='*50}")
-            
-            # Also log via structured logger for better visibility
             logger.info("Generated prompt preview", 
                        user_id=user_id,
                        prompt_preview=prompt_preview,
                        prompt_length=len(generated_prompt),
                        task_id=self.request.id)
+            
+            # Remove duplicate logging
             
             # Add prompt to comprehensive data
             comprehensive_data["generated_prompt"] = {
@@ -568,19 +725,25 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
                 "generated_at": time.time()
             }
             
-            print(f"📈 COMPREHENSIVE ANALYSIS COMPLETE:")
-            print(f"   👤 User: {comprehensive_data['user_profile']['name']}")
-            print(f"   📍 Location: {comprehensive_data['location_intelligence']['current_location']}")
-            print(f"   🎯 Engagement: {comprehensive_data['interaction_analytics']['engagement_score']:.2f}")
-            print(f"   🤖 Prompt Generated: {len(generated_prompt)} chars")
-            print(f"   ⏱️  Processing Time: {comprehensive_data['processing_info']['processing_duration_ms']}ms")
-            print(f"   🔧 Worker: {worker_id}")
-            print(f"   ✅ Status: Successfully processed comprehensive user data and generated prompt\n")
+            logger.info("Comprehensive analysis completed",
+                       user_id=user_id,
+                       user_name=comprehensive_data['user_profile']['name'],
+                       current_location=comprehensive_data['location_intelligence']['current_location'],
+                       engagement_score=comprehensive_data['interaction_analytics']['engagement_score'],
+                       prompt_length=len(generated_prompt),
+                       processing_time_ms=comprehensive_data['processing_info']['processing_duration_ms'],
+                       worker_id=worker_id,
+                       status="comprehensive_processing_complete")
             
+            log_background_task("process_user_comprehensive", task_id, "completed", 
+                               user_id=user_id, 
+                               worker_id=worker_id,
+                               processing_duration_ms=comprehensive_data["processing_info"]["processing_duration_ms"],
+                               prompt_length=len(generated_prompt))
             logger.info("Comprehensive user processing completed successfully", 
                        user_id=user_id, 
                        worker_id=worker_id, 
-                       task_id=self.request.id,
+                       task_id=task_id,
                        processing_duration_ms=comprehensive_data["processing_info"]["processing_duration_ms"],
                        prompt_length=len(generated_prompt))
             
@@ -596,16 +759,22 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
             loop.close()
             
     except Exception as e:
+        log_background_task("process_user_comprehensive", task_id, "failed", 
+                           user_id=user_id, 
+                           error=str(e))
         logger.error("Comprehensive user processing failed", 
                     user_id=user_id, 
-                    task_id=self.request.id, 
+                    task_id=task_id, 
                     error=str(e))
         
-        print(f"❌ COMPREHENSIVE PROCESSING FAILED:")
-        print(f"   👤 User ID: {user_id}")
-        print(f"   🔧 Worker: {self.request.hostname}")
-        print(f"   ❌ Error: {str(e)}")
-        print(f"   📋 Task ID: {self.request.id}\n")
+        logger.error("Comprehensive processing failed",
+                    user_id=user_id,
+                    worker_id=self.request.hostname,
+                    error=str(e),
+                    task_id=task_id,
+                    status="processing_failed")
+        
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "process_user_comprehensive", "task_id": task_id})
         
         return {
             "success": False,
@@ -625,20 +794,31 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
     - Generates a personalized prompt using PromptBuilder
     - Returns the generated prompt
     """
+    task_id = self.request.id
+    log_background_task("generate_user_prompt", task_id, "started", 
+                       user_id=user_id, 
+                       recommendation_type=recommendation_type,
+                       max_results=max_results)
+    
     try:
-        logger.info("Starting user prompt generation", user_id=user_id, recommendation_type=recommendation_type, task_id=self.request.id)
+        logger.info("Starting user prompt generation", 
+                   user_id=user_id, 
+                   recommendation_type=recommendation_type, 
+                   task_id=task_id,
+                   max_results=max_results)
         
         # Get worker info for tracking
         worker_id = self.request.hostname
         worker_pid = os.getpid()
         
-        print(f"\n🤖 USER PROMPT GENERATION:")
-        print(f"   👤 User ID: {user_id}")
-        print(f"   🔧 Worker: {worker_id} (PID: {worker_pid})")
-        print(f"   📋 Task ID: {self.request.id}")
-        print(f"   🎯 Recommendation Type: {recommendation_type}")
-        print(f"   📊 Max Results: {max_results}")
-        print(f"   🚀 Status: Fetching user data and generating prompt...\n")
+        logger.info("User prompt generation started",
+                   user_id=user_id,
+                   worker_id=worker_id,
+                   worker_pid=worker_pid,
+                   task_id=self.request.id,
+                   recommendation_type=recommendation_type,
+                   max_results=max_results,
+                   status="fetching_user_data")
         
         # Create service instances
         user_service = UserProfileService(timeout=30)
@@ -651,43 +831,64 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
         asyncio.set_event_loop(loop)
         
         try:
-            print(f"📊 FETCHING USER DATA:")
-            print(f"   🔄 User Profile Service...")
+            logger.info("Fetching user data for prompt generation",
+                       user_id=user_id,
+                       services=["user_profile", "location_intelligence", "content_interaction"])
             
             # Fetch user profile data
+            logger.info("Fetching user profile data", user_id=user_id, service="user_profile")
             user_profile = loop.run_until_complete(user_service.get_user_profile(user_id))
             if not user_profile:
                 raise Exception(f"Failed to fetch user profile for user_id: {user_id}")
             
-            print(f"   ✅ User Profile: {user_profile.name} ({user_profile.email})")
-            print(f"   🔄 Location Intelligence Service...")
+            logger.info("User profile data fetched successfully",
+                       user_id=user_id,
+                       user_name=user_profile.name,
+                       user_email=user_profile.email,
+                       service="user_profile")
             
             # Fetch location data
+            logger.info("Fetching location data", user_id=user_id, service="location_intelligence")
             location_data = loop.run_until_complete(lie_service.get_location_data(user_id))
             if not location_data:
                 raise Exception(f"Failed to fetch location data for user_id: {user_id}")
             
-            print(f"   ✅ Location: {location_data.current_location} (Home: {location_data.home_location})")
-            print(f"   🔄 Content Interaction Service...")
+            logger.info("Location data fetched successfully",
+                       user_id=user_id,
+                       current_location=location_data.current_location,
+                       home_location=location_data.home_location,
+                       service="location_intelligence")
             
             # Fetch interaction data
+            logger.info("Fetching interaction data", user_id=user_id, service="content_interaction")
             interaction_data = loop.run_until_complete(cis_service.get_interaction_data(user_id))
             if not interaction_data:
                 raise Exception(f"Failed to fetch interaction data for user_id: {user_id}")
             
-            print(f"   ✅ Engagement Score: {interaction_data.engagement_score:.2f}")
-            print(f"   ✅ All data fetched successfully!\n")
+            logger.info("Interaction data fetched successfully",
+                       user_id=user_id,
+                       engagement_score=interaction_data.engagement_score,
+                       service="content_interaction")
+            
+            logger.info("All user data fetched successfully for prompt generation",
+                       user_id=user_id,
+                       status="data_fetch_complete")
             
             # Generate the prompt
-            print(f"🤖 GENERATING PROMPT:")
-            print(f"   🔄 Building personalized prompt for {recommendation_type} recommendations...")
+            logger.info("Generating personalized prompt",
+                       user_id=user_id,
+                       recommendation_type=recommendation_type,
+                       max_results=max_results)
             
             # Convert recommendation_type string to enum
             try:
                 rec_type_enum = RecommendationType(recommendation_type.upper())
             except ValueError:
                 rec_type_enum = RecommendationType.PLACE  # Default fallback
-                print(f"   ⚠️  Invalid recommendation type '{recommendation_type}', using PLACE as default")
+                logger.warning("Invalid recommendation type, using PLACE as default",
+                             user_id=user_id,
+                             invalid_type=recommendation_type,
+                             default_type="PLACE")
             
             generated_prompt = prompt_builder.build_recommendation_prompt(
                 user_profile=user_profile,
@@ -697,12 +898,15 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
                 max_results=max_results
             )
             
-            print(f"   ✅ Prompt generated successfully!")
-            print(f"   📝 Prompt length: {len(generated_prompt)} characters")
+            logger.info("Prompt generated successfully",
+                       user_id=user_id,
+                       prompt_length=len(generated_prompt),
+                       recommendation_type=recommendation_type)
             
             # Generate recommendations using LLM service
-            print(f"🤖 GENERATING RECOMMENDATIONS:")
-            print(f"   🔄 Sending prompt to LLM service...")
+            logger.info("Generating recommendations using LLM service",
+                       user_id=user_id,
+                       prompt_length=len(generated_prompt))
             
             # Use asyncio to call the async method
             loop = asyncio.new_event_loop()
@@ -712,11 +916,14 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
             )
             
             if llm_response.get("success"):
-                print(f"   ✅ Recommendations generated successfully!")
-                print(f"   📊 Total recommendations: {llm_response['metadata']['total_recommendations']}")
-                print(f"   🎬 Categories: {', '.join(llm_response['metadata']['categories'])}")
+                logger.info("Recommendations generated successfully",
+                           user_id=user_id,
+                           total_recommendations=llm_response['metadata']['total_recommendations'],
+                           categories=llm_response['metadata']['categories'])
             else:
-                print(f"   ❌ Failed to generate recommendations: {llm_response.get('error', 'Unknown error')}")
+                logger.error("Failed to generate recommendations",
+                            user_id=user_id,
+                            error=llm_response.get('error', 'Unknown error'))
             
             # Create comprehensive result
             result_data = {
@@ -747,20 +954,26 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
                 "recommendations": llm_response if llm_response.get("success") else None
             }
             
-            print(f"📈 COMPREHENSIVE PROCESSING COMPLETE:")
-            print(f"   👤 User: {result_data['user_summary']['name']}")
-            print(f"   📍 Location: {result_data['user_summary']['current_location']}")
-            print(f"   🎯 Engagement: {result_data['user_summary']['engagement_score']:.2f}")
-            print(f"   🤖 Prompt Generated: {len(generated_prompt)} chars")
-            if llm_response.get("success"):
-                print(f"   🎬 Recommendations: {llm_response['metadata']['total_recommendations']} items")
-            print(f"   🔧 Worker: {worker_id}")
-            print(f"   ✅ Status: Successfully processed user and generated recommendations\n")
+            logger.info("Comprehensive processing completed",
+                       user_id=user_id,
+                       user_name=result_data['user_summary']['name'],
+                       current_location=result_data['user_summary']['current_location'],
+                       engagement_score=result_data['user_summary']['engagement_score'],
+                       prompt_length=len(generated_prompt),
+                       total_recommendations=llm_response['metadata']['total_recommendations'] if llm_response.get("success") else 0,
+                       worker_id=worker_id,
+                       status="processing_complete")
             
+            log_background_task("generate_user_prompt", task_id, "completed", 
+                               user_id=user_id, 
+                               worker_id=worker_id,
+                               recommendation_type=recommendation_type,
+                               prompt_length=len(generated_prompt),
+                               total_recommendations=llm_response['metadata']['total_recommendations'] if llm_response.get("success") else 0)
             logger.info("User prompt generation completed successfully", 
                        user_id=user_id, 
                        worker_id=worker_id, 
-                       task_id=self.request.id,
+                       task_id=task_id,
                        recommendation_type=recommendation_type,
                        prompt_length=len(generated_prompt))
             
@@ -777,16 +990,22 @@ def generate_user_prompt(self, user_id: str, recommendation_type: str = "PLACE",
             loop.close()
             
     except Exception as e:
+        log_background_task("generate_user_prompt", task_id, "failed", 
+                           user_id=user_id, 
+                           error=str(e))
         logger.error("User prompt generation failed", 
                     user_id=user_id, 
-                    task_id=self.request.id, 
+                    task_id=task_id, 
                     error=str(e))
         
-        print(f"❌ PROMPT GENERATION FAILED:")
-        print(f"   👤 User ID: {user_id}")
-        print(f"   🔧 Worker: {self.request.hostname}")
-        print(f"   ❌ Error: {str(e)}")
-        print(f"   📋 Task ID: {self.request.id}\n")
+        logger.error("Prompt generation failed",
+                    user_id=user_id,
+                    worker_id=self.request.hostname,
+                    error=str(e),
+                    task_id=task_id,
+                    status="prompt_generation_failed")
+        
+        log_exception("celery_tasks", e, {"user_id": user_id, "task": "generate_user_prompt", "task_id": task_id})
         
         return {
             "success": False,
