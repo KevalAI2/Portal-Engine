@@ -276,7 +276,7 @@ async def root():
         "version": settings.app_version,
         "environment": settings.environment,
         "docs": "/docs",
-        "health": f"{settings.api_prefix}/health"
+        "health": f"{settings.api_prefix}/health/"
     }
     return APIResponse.success_response(data=data, message="API is running")
 

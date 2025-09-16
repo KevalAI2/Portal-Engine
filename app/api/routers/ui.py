@@ -11,6 +11,12 @@ import httpx
 import json
 from typing import Dict, Any, Optional
 import time
+import os
+import pathlib
+import sys
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
 router = APIRouter(prefix="/ui", tags=["ui"])
 logger = get_logger("ui_router")
@@ -81,6 +87,22 @@ async def portal_dashboard(request: Request):
     except Exception as e:
         logger.error("Error loading portal dashboard", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to load portal dashboard")
+
+
+@router.get("/tests", response_class=HTMLResponse)
+async def tests_dashboard(request: Request):
+    """
+    Tests dashboard interface
+    """
+    try:
+        logger.info("Tests dashboard accessed")
+        return templates.TemplateResponse("tests_dashboard.html", {
+            "request": request,
+            "app_name": settings.app_name
+        })
+    except Exception as e:
+        logger.error("Error loading tests dashboard", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to load tests dashboard")
 
 
 @router.post("/proxy")
@@ -837,3 +859,457 @@ async def get_endpoints():
             "success": False,
             "error": str(e)
         })
+
+@router.get("/tests/list")
+async def list_test_files():
+    """
+    List test files under tests/ directory
+    """
+    try:
+        tests_root = pathlib.Path("tests")
+        if not tests_root.exists():
+            return JSONResponse({"success": True, "files": []})
+        files = []
+        for p in sorted(tests_root.glob("**/test_*.py")):
+            rel = str(p)
+            files.append({
+                "path": rel,
+                "name": p.name,
+                "size": p.stat().st_size
+            })
+        return JSONResponse({"success": True, "files": files})
+    except Exception as e:
+        logger.error("Error listing test files", error=str(e))
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@router.get("/tests/view")
+async def view_test_file(path: str):
+    """
+    Return the contents of a specific test file
+    """
+    try:
+        safe_path = pathlib.Path(path)
+        if ".." in safe_path.parts or not str(safe_path).startswith("tests"):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not safe_path.exists() or not safe_path.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        content = safe_path.read_text(encoding="utf-8")
+        return JSONResponse({"success": True, "path": path, "content": content})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error reading test file", error=str(e), path=path)
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@router.post("/tests/run")
+async def run_all_tests_endpoint(request: Request):
+    """
+    Run the full pytest suite with JSON report and coverage, return summarized results.
+    """
+    try:
+        project_root = pathlib.Path(__file__).resolve().parents[3]
+        tests_dir = project_root / "tests"
+        report_path = project_root / "test-results.json"
+        coverage_xml = project_root / "coverage.xml"
+        payload = {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        file_param = (payload.get("file") if isinstance(payload, dict) else None) or None
+
+        # Clean old artifacts
+        for p in [report_path, coverage_xml]:
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+
+        if not file_param or file_param == "ALL":
+            # Run all tests via pytest directly
+            target = str(tests_dir)
+            is_single = False
+        else:
+            # Normalize to relative path under tests/
+            selected = pathlib.Path(file_param)
+            if selected.is_absolute():
+                # convert to relative to project root
+                try:
+                    selected = selected.relative_to(project_root)
+                except Exception:
+                    pass
+            # Ensure we have just the test filename relative to tests dir
+            if str(selected).startswith("tests/"):
+                selected_rel = selected.relative_to("tests/")
+            else:
+                selected_rel = selected
+            selected_full = tests_dir / selected_rel
+            target = str(selected_full)
+            is_single = True
+
+        # Run pytest with coverage and json report in one go
+        cmd = [
+            sys.executable, "-m", "pytest",
+            target,
+            "--json-report",
+            f"--json-report-file={report_path}",
+            "--cov=.",
+            f"--cov-report=xml:{coverage_xml}",
+            "--cov-report=term-missing",
+            "--cov-branch",
+            "--disable-warnings",
+            "--tb=short"
+        ]
+        logger.info("Running pytest with coverage", cmd=" ".join(cmd))
+        proc = subprocess.run(cmd, cwd=str(project_root), capture_output=True, text=True)
+
+        # Parse JSON report
+        totals = {
+            "tests": 0, "passed": 0, "failed": 0, "skipped": 0,
+            "xpassed": 0, "xfailed": 0, "warnings": 0
+        }
+        per_file: Dict[str, Dict[str, int]] = {}
+        if report_path.exists():
+            try:
+                data = json.loads(report_path.read_text(encoding="utf-8"))
+                # summary/totals
+                summary = data.get("summary", {})
+                totals.update({
+                    "tests": summary.get("total", totals["tests"]),
+                    "passed": summary.get("passed", totals["passed"]),
+                    "failed": summary.get("failed", totals["failed"]),
+                    "skipped": summary.get("skipped", totals["skipped"]),
+                    "xpassed": summary.get("xpassed", totals["xpassed"]),
+                    "xfailed": summary.get("xfailed", totals["xfailed"]),
+                    "warnings": summary.get("warnings", totals["warnings"]),
+                })
+                # per-test build file stats
+                for test in data.get("tests", []):
+                    nodeid = test.get("nodeid", "")
+                    file_name = pathlib.Path(nodeid.split("::")[0]).name
+                    outcome = test.get("outcome", "")
+                    stats = per_file.setdefault(file_name, {"tests": 0, "passed": 0, "failed": 0, "skipped": 0})
+                    stats["tests"] += 1
+                    if outcome == "passed":
+                        stats["passed"] += 1
+                    elif outcome == "failed":
+                        stats["failed"] += 1
+                    elif outcome == "skipped":
+                        stats["skipped"] += 1
+            except Exception as e:
+                logger.warning("Failed parsing pytest JSON report", error=str(e))
+
+        # IMPROVED: Parse coverage xml with better filtering
+        coverage_summary = {"overall_percent": 0.0, "files": []}
+        if coverage_xml.exists():
+            try:
+                tree = ET.parse(str(coverage_xml))
+                root = tree.getroot()
+                
+                # IMPROVED: Filter out __init__.py files and empty files
+                filtered_files = []
+                excluded_files = ["run_all_tests.py", "run_tests.py", "update_test_docs.py" , "tests/conftest.py"]
+                for pkg in root.findall("packages/package"):
+                    for clazz in pkg.findall("classes/class"):
+                        filename = clazz.attrib.get("filename", "")
+                        # Skip __init__.py files, empty files, and excluded files
+                        if filename.endswith("__init__.py") or not filename or filename in excluded_files:
+                            continue
+                        
+                        lines = clazz.find("lines")
+                        total = 0
+                        covered = 0
+                        if lines is not None:
+                            for line in lines.findall("line"):
+                                total += 1
+                                hits = int(line.attrib.get("hits", "0"))
+                                if hits > 0:
+                                    covered += 1
+                        
+                        # Only include files that were actually tested (have coverage data)
+                        if total > 0:
+                            percent = round((covered / total) * 100.0, 2) if total > 0 else 0.0
+                            filtered_files.append({
+                                "file": filename,
+                                "lines": total,
+                                "covered": covered,
+                                "missed": total - covered,
+                                "percent": percent,
+                            })
+                
+                # For single file runs, only show files that have coverage > 0%
+                if is_single:
+                    filtered_files = [f for f in filtered_files if f["percent"] > 0]
+                
+                # New: For single file, filter to only the test file and set overall to its percent
+                if is_single:
+                    test_file_path = str(selected)
+                    filtered_files = [f for f in filtered_files if f["file"] == test_file_path]
+                    if filtered_files:
+                        coverage_summary["overall_percent"] = filtered_files[0]["percent"]
+                    coverage_summary["files"] = filtered_files
+                else:
+                    # Calculate overall percent excluding unwanted files
+                    total_covered = sum(f["covered"] for f in filtered_files)
+                    total_lines = sum(f["lines"] for f in filtered_files)
+                    coverage_summary["overall_percent"] = round((total_covered / total_lines) * 100.0, 2) if total_lines > 0 else 0.0
+                    coverage_summary["files"] = filtered_files
+                
+            except Exception as e:
+                logger.warning("Failed parsing coverage XML", error=str(e))
+
+        # IMPROVED: Build consistent styled tables
+        def build_styled_table(headers, rows, table_class="test-coverage-table"):
+            thead = ''.join([f"<th class='table-header'>{h}</th>" for h in headers])
+            tbody = ''
+            for row in rows:
+                row_html = ''.join([f"<td class='table-cell'>{cell}</td>" for cell in row])
+                tbody += f"<tr class='table-row'>{row_html}</tr>"
+            return f"""
+            <div class="table-container">
+                <table class="{table_class}">
+                    <thead class="table-head">
+                        <tr>{thead}</tr>
+                    </thead>
+                    <tbody class="table-body">
+                        {tbody}
+                    </tbody>
+                </table>
+            </div>
+            """
+
+        # Overall totals with styled cards
+        pass_rate = round((totals.get("passed", 0) / max(1, totals.get("tests", 0))) * 100, 1)
+        coverage_percent = coverage_summary.get("overall_percent", 0.0)
+        
+        overall_rows = [[
+            f"<strong>{totals.get('tests', 0)}</strong>",
+            f"<span class='badge bg-success'>{totals.get('passed', 0)}</span>",
+            f"<span class='badge bg-danger'>{totals.get('failed', 0)}</span>",
+            f"<span class='badge bg-warning'>{totals.get('skipped', 0)}</span>",
+            f"<span class='badge bg-info'>{totals.get('warnings', 0)}</span>",
+            f"<span class='coverage-badge'>{coverage_percent}%</span>"
+        ]]
+        
+        overall_table = build_styled_table(
+            ["Total", "Passed", "Failed", "Skipped", "Warnings", "Coverage %"],
+            overall_rows,
+            "overall-table"
+        )
+
+        # IMPROVED: Per Test File with consistent styling like coverage
+        test_file_rows = []
+        for file_name, stats in sorted(per_file.items()):
+            total_t = max(1, stats.get("tests", 0))
+            passed_t = stats.get("passed", 0)
+            failed_t = stats.get("failed", 0)
+            skipped_t = stats.get("skipped", 0)
+            percent_pass = round((passed_t / total_t) * 100.0, 2) if total_t else 0.0
+            
+            # Determine badge class
+            if percent_pass >= 90:
+                badge_class = "badge bg-success"
+                badge_text = "Excellent"
+            elif percent_pass >= 75:
+                badge_class = "badge bg-primary"
+                badge_text = "Good"
+            elif percent_pass >= 50:
+                badge_class = "badge bg-warning text-dark"
+                badge_text = "Fair"
+            else:
+                badge_class = "badge bg-danger"
+                badge_text = "Poor"
+            
+            # Progress bar
+            progress_bar = f"""
+            <div class="progress progress-sm" style="height: 8px; margin-top: 4px;">
+                <div class="progress-bar {'progress-bar-success' if percent_pass >= 90 else 'progress-bar-primary' if percent_pass >= 75 else 'progress-bar-warning' if percent_pass >= 50 else 'progress-bar-danger'}" 
+                     role="progressbar" 
+                     style="width: {percent_pass}%" 
+                     aria-valuenow="{percent_pass}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+            """
+            
+            test_file_rows.append([
+                f"<strong>{file_name}</strong><br><span class='{badge_class}'>{badge_text}</span>",
+                str(total_t),
+                f"<span class='badge bg-success'>{passed_t}</span>",
+                f"<span class='badge bg-danger'>{failed_t}</span>",
+                f"<span class='badge bg-warning'>{skipped_t}</span>",
+                f"<strong>{percent_pass}%</strong><br>{progress_bar}"
+            ])
+        
+        tests_table = build_styled_table(
+            ["Test File", "Total", "Passed", "Failed", "Skipped", "Pass %"],
+            test_file_rows,
+            "test-coverage-table"
+        )
+
+        # IMPROVED: Per Source File Coverage with better filtering and styling
+        cov_rows = []
+        files_cov = coverage_summary.get("files", [])
+        files_cov.sort(key=lambda x: x.get("percent", 0.0), reverse=True)
+        
+        for f in files_cov:
+            fname = f.get("file", "")
+            # Skip any remaining __init__.py or empty files
+            if "__init__" in fname or not fname:
+                continue
+                
+            pct = f.get("percent", 0.0)
+            lines = f.get("lines", 0)
+            covered = f.get("covered", 0)
+            missed = f.get("missed", 0)
+            
+            # Determine badge class
+            if pct >= 90:
+                badge_class = "badge bg-success"
+                badge_text = "Excellent"
+            elif pct >= 75:
+                badge_class = "badge bg-primary"
+                badge_text = "Good"
+            elif pct >= 50:
+                badge_class = "badge bg-warning text-dark"
+                badge_text = "Fair"
+            else:
+                badge_class = "badge bg-danger"
+                badge_text = "Poor"
+            
+            # Progress bar with color coding
+            bar_class = 'progress-bar-success' if pct >= 90 else 'progress-bar-primary' if pct >= 75 else 'progress-bar-warning' if pct >= 50 else 'progress-bar-danger'
+            progress_bar = f"""
+            <div class="progress progress-sm" style="height: 8px; margin-top: 4px;">
+                <div class="progress-bar {bar_class}" 
+                     role="progressbar" 
+                     style="width: {pct}%" 
+                     aria-valuenow="{pct}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+            """
+            
+            cov_rows.append([
+                f"<strong>{fname}</strong><br><span class='{badge_class}'>{badge_text}</span>",
+                str(lines),
+                f"<span class='badge bg-success'>{covered}</span>",
+                f"<span class='badge bg-danger'>{missed}</span>",
+                f"<strong>{pct}%</strong><br>{progress_bar}"
+            ])
+        
+        coverage_table = build_styled_table(
+            ["Source File", "Lines", "Covered", "Missed", "Coverage %"],
+            cov_rows,
+            "test-coverage-table"
+        )
+
+        # ENHANCED: Beautiful summary cards with better styling
+        cards = f"""
+        <div class="row g-3 mb-4 summary-cards">
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-total">
+                    <div class="label">Total Tests</div>
+                    <div class="value">{totals.get('tests', 0)}</div>
+                    <div class="metric-subtitle">Executed</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-pass">
+                    <div class="label">Passed</div>
+                    <div class="value">{totals.get('passed', 0)}</div>
+                    <div class="metric-subtitle">{pass_rate}% Pass Rate</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-fail">
+                    <div class="label">Failed</div>
+                    <div class="value">{totals.get('failed', 0)}</div>
+                    <div class="metric-subtitle">Errors</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-skip">
+                    <div class="label">Skipped</div>
+                    <div class="value">{totals.get('skipped', 0)}</div>
+                    <div class="metric-subtitle">Tests</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-warn">
+                    <div class="label">Warnings</div>
+                    <div class="value">{totals.get('warnings', 0)}</div>
+                    <div class="metric-subtitle">Issued</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <div class="summary-card sc-cov">
+                    <div class="label">Code Coverage</div>
+                    <div class="value">{coverage_percent}%</div>
+                    <div class="metric-subtitle">Overall</div>
+                </div>
+            </div>
+        </div>
+        """
+
+        # Status indicator
+        status_class = "status-success" if totals.get('failed', 0) == 0 else "status-warning" if totals.get('failed', 0) > 0 else "status-danger"
+        status_text = "All tests passed! 🎉" if totals.get('failed', 0) == 0 else f"{totals.get('failed', 0)} test(s) failed"
+        
+        status_indicator = f"""
+        <div class="test-status-indicator {status_class} mb-4">
+            <div class="status-icon">{'✅' if totals.get('failed', 0) == 0 else '⚠️'}</div>
+            <div class="status-text">{status_text}</div>
+            <div class="status-detail">
+                Run at: {time.strftime('%Y-%m-%d %H:%M:%S')} | 
+                Duration: {proc.returncode == 0 and 'Success' or 'Failed'}
+            </div>
+        </div>
+        """
+
+        html = f"""
+        {status_indicator}
+        {cards}
+        <div class="section-divider mb-3">
+            <h6 class="section-title">Overall Summary</h6>
+            {overall_table}
+        </div>
+        <div class="section-divider mb-3">
+            <h6 class="section-title">Per Test File Results</h6>
+            {tests_table}
+        </div>
+        <div class="section-divider mb-3">
+            <h6 class="section-title">Code Coverage by Source File</h6>
+            <p class="section-subtitle">Files with actual test coverage ({len(cov_rows)} files)</p>
+            {coverage_table}
+        </div>
+        <details class="output-details mt-3">
+            <summary class="output-summary">Raw Test Output (last 5k chars)</summary>
+            <div class="output-container">
+                <pre class="output-pre">{(proc.stdout or '')[-5000:]}</pre>
+            </div>
+        </details>
+        <details class="output-details">
+            <summary class="output-summary">Error Output (if any)</summary>
+            <div class="output-container">
+                <pre class="output-pre">{(proc.stderr or '')[-5000:]}</pre>
+            </div>
+        </details>
+        """
+
+        return JSONResponse({
+            "success": True, 
+            "html": html, 
+            "return_code": proc.returncode,
+            "totals": totals,
+            "coverage": coverage_summary,
+            "is_single_file": is_single
+        })
+    except Exception as e:
+        logger.error("Error running tests via API", error=str(e))
+        return JSONResponse({"success": False, "error": str(e)})

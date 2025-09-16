@@ -45,7 +45,7 @@ class TestMainApplication:
         assert data["data"]["version"] == settings.app_version
         assert data["data"]["environment"] == settings.environment
         assert data["data"]["docs"] == "/docs"
-        assert data["data"]["health"] == f"{settings.api_prefix}/health"
+        assert data["data"]["health"] == f"{settings.api_prefix}/health/"
 
     def test_ping_endpoint(self):
         """Test the ping endpoint."""

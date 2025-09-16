@@ -330,7 +330,7 @@ class TestBaseService:
             
             result = await base_service.health_check()
             assert result is True
-            mock_make_request.assert_called_once_with("GET", "/health")
+            mock_make_request.assert_called_once_with("GET", "/health/")
 
     @pytest.mark.asyncio
     async def test_health_check_failure(self, base_service):
