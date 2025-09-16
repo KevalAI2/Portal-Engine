@@ -10,7 +10,7 @@ import sys
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
-    app_name: str = "GenAIforTravel"
+    app_name: str = "Portal Engine"
     debug: bool = True
     database_url: str = "sqlite:///./test.db"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive test runner for the GenAI for Travel project.
+Comprehensive test runner for the Portal Engine project.
 
 This script provides a single command to run all tests in the project,
 including unit tests, integration tests, and performance tests.
@@ -285,7 +285,7 @@ def run_tests_with_stats():
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
-        description="Comprehensive test runner for the GenAI for Travel project",
+        description="Comprehensive test runner for the Portal Engine project",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )

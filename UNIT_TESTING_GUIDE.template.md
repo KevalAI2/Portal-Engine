@@ -1,4 +1,4 @@
-# Unit Testing Guide for GenAI for Travel Project
+# Unit Testing Guide for Portal Engine Project
 
 ## 📋 Table of Contents
 - [What are Unit Tests?](#what-are-unit-tests)
@@ -178,7 +178,7 @@ python run_all_tests.py --install-deps
 #### Import Errors
 ```bash
 # Ensure you're in the project root
-cd /Users/apple/Downloads/GenAIforTravel
+cd /Users/apple/Downloads/Portal-Engine
 
 # Check Python path
 python -c "import sys; print(sys.path)"

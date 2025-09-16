@@ -74,7 +74,7 @@ class BaseService:
     async def health_check(self) -> bool:
         """Check if the service is healthy"""
         try:
-            await self._make_request("GET", "/health")
+            await self._make_request("GET", "/health/")
             return True
         except Exception:
             return False

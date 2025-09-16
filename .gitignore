@@ -4,3 +4,8 @@ venv
 .DS_Store
 .idea/
 .pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+logs/
+dump.rdb
