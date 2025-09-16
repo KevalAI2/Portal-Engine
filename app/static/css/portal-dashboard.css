@@ -1,0 +1,420 @@
+/* Portal Dashboard Styles */
+body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Header */
+.portal-header {
+    background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.portal-title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 0;
+}
+
+.portal-subtitle {
+    font-size: 1.1rem;
+    margin: 0;
+    opacity: 0.9;
+}
+
+/* Main Container */
+.portal-container {
+    padding: 0 2rem;
+}
+
+.portal-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* Sections */
+.section {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid #f8f9fa;
+}
+
+.section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.section-header i {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    color: #667eea;
+}
+
+.section-header h3 {
+    margin: 0;
+    color: #333;
+    font-weight: 600;
+}
+
+/* Form Groups */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #555;
+}
+
+.form-control {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+/* Buttons */
+.btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    border: none;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-success {
+    background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+    color: white;
+}
+
+.btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+}
+
+.btn-purple {
+    background: linear-gradient(45deg, #a8a8f0, #c8a8e8);
+    color: white;
+}
+
+.btn-purple:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(168, 168, 240, 0.4);
+}
+
+.btn-danger {
+    background: linear-gradient(45deg, #ff6b6b, #ffa8a8);
+    color: white;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+}
+
+/* Button Groups */
+.button-group {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+/* Operation Cards */
+.operation-card {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 1.5rem;
+    height: 100%;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.operation-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.operation-card h5 {
+    color: #333;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.card-description {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+/* Response Areas */
+.response-area {
+    margin-top: 1rem;
+}
+
+.response-area label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #555;
+}
+
+.json-display {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 100px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.json-display p {
+    margin: 0;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* JSON Viewer Styles */
+.json-viewer {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.json-object {
+    margin-left: 0;
+}
+
+.json-array {
+    margin-left: 0;
+}
+
+.json-key {
+    color: #d73a49;
+    font-weight: bold;
+}
+
+.json-string {
+    color: #032f62;
+}
+
+.json-number {
+    color: #005cc5;
+}
+
+.json-boolean {
+    color: #e36209;
+}
+
+.json-null {
+    color: #6f42c1;
+    font-style: italic;
+}
+
+.json-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: #6c757d;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.json-toggle:hover {
+    color: #495057;
+}
+
+.json-collapsed {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.json-line {
+    margin: 2px 0;
+    padding: 2px 0;
+}
+
+.json-indent {
+    display: inline-block;
+    width: 20px;
+}
+
+.json-bracket {
+    color: #6c757d;
+    font-weight: bold;
+}
+
+.json-comma {
+    color: #6c757d;
+}
+
+/* JSON Viewer Controls */
+.json-viewer-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background-color: #e9ecef;
+    border-radius: 0.375rem 0.375rem 0 0;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+}
+
+.json-viewer-title {
+    font-weight: 600;
+    color: #495057;
+    margin: 0;
+}
+
+.json-viewer-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.json-copy-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.json-copy-btn:hover {
+    background: #0056b3;
+}
+
+.json-expand-all-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.json-expand-all-btn:hover {
+    background: #545b62;
+}
+
+.json-viewer-container {
+    border: 1px solid #dee2e6;
+    border-radius: 0 0 0.375rem 0.375rem;
+    overflow: hidden;
+}
+
+/* Copy notification */
+.copy-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.copy-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Loading States */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .portal-container {
+        padding: 0 1rem;
+    }
+    
+    .portal-card {
+        padding: 1rem;
+    }
+    
+    .button-group {
+        flex-direction: column;
+    }
+    
+    .button-group .btn {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    .operation-card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Scrollbar styling */
+.json-display::-webkit-scrollbar {
+    width: 6px;
+}
+
+.json-display::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.json-display::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.json-display::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}

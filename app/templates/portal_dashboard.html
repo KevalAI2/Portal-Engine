@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Engine - Backend API Dashboard & Testing Interface</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/portal-dashboard.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="portal-header">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-rocket me-3"></i>
+                <div>
+                    <h1 class="portal-title">Portal Engine</h1>
+                    <p class="portal-subtitle">Backend API Dashboard & Testing Interface</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container-fluid portal-container">
+        <div class="row">
+            <div class="col-12">
+                <div class="portal-card">
+                    
+                    <!-- API Configuration Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-cog"></i>
+                            <h3>API Configuration</h3>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label>Backend API URL</label>
+                                    <input type="text" class="form-control" id="api-url" value="http://localhost:3031" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary" onclick="testConnection()">Test Connection</button>
+                            </div>
+                        </div>
+                        <div class="response-area">
+                            <label>Connection Status</label>
+                            <div id="connection-status" class="json-display">
+                                <p class="text-muted">Click "Test Connection" to check API status</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Health Check Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-heartbeat"></i>
+                            <h3>Health Check</h3>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-primary" onclick="checkHealth('health')">Check API Health</button>
+                            <button class="btn btn-purple" onclick="checkHealth('ready')">Check Readiness</button>
+                            <button class="btn btn-purple" onclick="checkHealth('live')">Check Liveness</button>
+                        </div>
+                        <div class="response-area">
+                            <label>Health Status</label>
+                            <div id="health-status" class="json-display">
+                                <p class="text-muted">Click a health check button to see status</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Operations Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-user"></i>
+                            <h3>User Operations</h3>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>User ID</label>
+                                    <input type="text" class="form-control" id="user-id" value="1">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>User Profile</h5>
+                                    <button class="btn btn-primary" onclick="getUserProfile()">Get Profile</button>
+                                    <div class="response-area">
+                                        <label>Profile Data</label>
+                                        <div id="profile-data" class="json-display">
+                                            <p class="text-muted">Click "Get Profile" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Location Data</h5>
+                                    <button class="btn btn-primary" onclick="getUserLocation()">Get Location</button>
+                                    <div class="response-area">
+                                        <label>Location Data</label>
+                                        <div id="location-data" class="json-display">
+                                            <p class="text-muted">Click "Get Location" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Interactions</h5>
+                                    <button class="btn btn-primary" onclick="getUserInteractions()">Get Interactions</button>
+                                    <div class="response-area">
+                                        <label>Interaction Data</label>
+                                        <div id="interaction-data" class="json-display">
+                                            <p class="text-muted">Click "Get Interactions" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-star"></i>
+                            <h3>Recommendations</h3>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label>Custom Prompt (optional)</label>
+                                    <input type="text" class="form-control" id="custom-prompt" placeholder="e.g., I like concerts and outdoor activities">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-success" onclick="generateRecommendations()">Generate Recommendations</button>
+                            <button class="btn btn-purple" onclick="generateDirectRecommendations()">Generate Direct (No User)</button>
+                            <button class="btn btn-danger" onclick="clearRecommendations()">Clear Recommendations</button>
+                        </div>
+                        <div class="response-area">
+                            <label>Recommendations</label>
+                            <div id="recommendations-data" class="json-display">
+                                <p class="text-muted">Click "Generate Recommendations" to create recommendations</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results & Analytics Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-chart-bar"></i>
+                            <h3>Results & Analytics</h3>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Category Filter:</label>
+                                    <select class="form-control" id="category-filter">
+                                        <option value="">All Categories</option>
+                                        <option value="movies">Movies</option>
+                                        <option value="music">Music</option>
+                                        <option value="places">Places</option>
+                                        <option value="events">Events</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Limit:</label>
+                                    <input type="number" class="form-control" id="results-limit" value="10" min="1" max="50">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Minimum Score:</label>
+                                    <input type="number" class="form-control" id="min-score" value="0.0" min="0" max="1" step="0.1">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-primary" onclick="getRankedResults()">Get Ranked Results</button>
+                            </div>
+                        </div>
+                        <div class="response-area">
+                            <label>Ranked Results</label>
+                            <div id="ranked-results" class="json-display">
+                                <p class="text-muted">Click "Get Ranked Results" to load analytics</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Internal Details & Debugging Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-search"></i>
+                            <h3>Internal Details & Debugging</h3>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Search Queries</h5>
+                                    <p class="card-description">View the actual search queries being passed through the system</p>
+                                    <div class="form-group mb-3">
+                                        <label for="search-user-id" class="form-label">Filter by User ID (optional)</label>
+                                        <input type="text" id="search-user-id" class="form-control" placeholder="Enter user ID (e.g., 1)" value="1">
+                                    </div>
+                                    <button class="btn btn-primary" onclick="getSearchQueries()">Get Search Queries</button>
+                                    <div class="response-area">
+                                        <label>Search Query Details</label>
+                                        <div id="search-queries" class="json-display">
+                                            <p class="text-muted">Click "Get Search Queries" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>ML Algorithm Parameters</h5>
+                                    <p class="card-description">View ML re-ranking algorithm parameters and weights</p>
+                                    <button class="btn btn-primary" onclick="getMLParameters()">Get ML Parameters</button>
+                                    <div class="response-area">
+                                        <label>ML Parameters</label>
+                                        <div id="ml-parameters" class="json-display">
+                                            <p class="text-muted">Click "Get ML Parameters" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Prefetch Statistics</h5>
+                                    <p class="card-description">Summary statistics on what Prefetch service is returning</p>
+                                    <button class="btn btn-primary" onclick="getPrefetchStats()">Get Prefetch Stats</button>
+                                    <div class="response-area">
+                                        <label>Prefetch Statistics</label>
+                                        <div id="prefetch-stats" class="json-display">
+                                            <p class="text-muted">Click "Get Prefetch Stats" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Processing Pipeline Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-bolt"></i>
+                            <h3>Processing Pipeline</h3>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Processing Pipeline</h5>
+                                    <p class="card-description">View the complete processing pipeline details</p>
+                                    <button class="btn btn-primary" onclick="getPipelineDetails()">Get Pipeline Details</button>
+                                    <div class="response-area">
+                                        <label>Processing Pipeline</label>
+                                        <div id="pipeline-details" class="json-display">
+                                            <p class="text-muted">Click "Get Pipeline Details" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Recommendation Engine</h5>
+                                    <p class="card-description">View recommendation engine internal stats and metrics</p>
+                                    <button class="btn btn-primary" onclick="getEngineDetails()">Get Engine Details</button>
+                                    <div class="response-area">
+                                        <label>Recommendation Engine</label>
+                                        <div id="engine-details" class="json-display">
+                                            <p class="text-muted">Click "Get Engine Details" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="operation-card">
+                                    <h5>Performance Metrics</h5>
+                                    <p class="card-description">View system performance and timing metrics</p>
+                                    <button class="btn btn-primary" onclick="getPerformanceMetrics()">Get Performance Metrics</button>
+                                    <div class="response-area">
+                                        <label>Performance Metrics</label>
+                                        <div id="performance-metrics" class="json-display">
+                                            <p class="text-muted">Click "Get Performance Metrics" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Processing Tasks Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-cogs"></i>
+                            <h3>Processing Tasks</h3>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Priority (1-10)</label>
+                                    <input type="number" class="form-control" id="task-priority" value="5" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-success" onclick="processUserAsync()">Process User (Async)</button>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-purple" onclick="processUserDirect()">Process User (Direct)</button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Task ID (for status check)</label>
+                                    <input type="text" class="form-control" id="task-id" placeholder="Enter task ID to check status">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-primary" onclick="checkTaskStatus()">Check Task Status</button>
+                            </div>
+                        </div>
+                        <div class="response-area">
+                            <label>Task Status</label>
+                            <div id="task-status" class="json-display">
+                                <p class="text-muted">Process a user or check task status to see results</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/portal-dashboard.js"></script>
+</body>
+</html>

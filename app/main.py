@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.api.routers import health, users
+from app.api.routers import health, users, ui
 from app.models.responses import APIResponse
 from app.utils.serialization import safe_serialize
 import json
@@ -257,6 +257,13 @@ app.include_router(
     users.router,
     prefix=settings.api_prefix
 )
+
+# Include UI router (no prefix for direct access)
+app.include_router(ui.router)
+
+# Mount static files
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 async def root():

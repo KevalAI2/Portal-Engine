@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }} - API Tester</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" rel="stylesheet">
+    <link href="/static/css/api-tester.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/ui/">
+                <strong>{{ app_name }}</strong> - API Tester
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/ui/">Dashboard</a>
+                <a class="nav-link" href="/docs">OpenAPI Docs</a>
+                <a class="nav-link" href="/redoc">ReDoc</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">API Tester</h1>
+                <p class="lead">Test your API endpoints with a powerful interface</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Request Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="api-test-form">
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label for="method" class="form-label">Method</label>
+                                    <select class="form-select" id="method" required>
+                                        <option value="GET">GET</option>
+                                        <option value="POST">POST</option>
+                                        <option value="PUT">PUT</option>
+                                        <option value="DELETE">DELETE</option>
+                                        <option value="PATCH">PATCH</option>
+                                        <option value="OPTIONS">OPTIONS</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-9">
+                                    <label for="url" class="form-label">URL</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">{{ api_base_url }}</span>
+                                        <input type="text" class="form-control" id="url" 
+                                               placeholder="/health/" value="/health/" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Headers (Auto-configured)</label>
+                                <div class="alert alert-info">
+                                    <small>Headers are automatically set based on the request type. No manual configuration needed!</small>
+                                </div>
+                            </div>
+
+                            <div class="mb-3" id="body-section" style="display: none;">
+                                <label for="body" class="form-label">Request Body</label>
+                                <textarea class="form-control" id="body" rows="6" 
+                                          placeholder='{"key": "value"}'></textarea>
+                                <div class="form-text">Enter JSON data for POST, PUT, PATCH requests</div>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <span class="spinner-border spinner-border-sm d-none" id="loading-spinner"></span>
+                                    Send Request
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Request History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="request-history">
+                            <p class="text-muted">No requests made yet.</p>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-sm" id="clear-history">Clear History</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Response</h5>
+                        <div>
+                            <span class="badge bg-secondary" id="status-badge">No request</span>
+                            <span class="badge bg-info" id="time-badge">0ms</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="response-container">
+                            <p class="text-muted">Send a request to see the response here.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Response Headers</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="response-headers">
+                            <p class="text-muted">No response headers yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">API Endpoints Reference</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6 class="text-primary">Health Endpoints</h6>
+                                <ul class="list-unstyled">
+                                    <li><code>GET /health/</code> - Health check</li>
+                                    <li><code>GET /health/ready</code> - Readiness check</li>
+                                    <li><code>GET /health/live</code> - Liveness check</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-primary">User Endpoints</h6>
+                                <ul class="list-unstyled">
+                                    <li><code>GET /users/{id}/profile</code> - Get user profile</li>
+                                    <li><code>GET /users/{id}/location</code> - Get location data</li>
+                                    <li><code>GET /users/{id}/interactions</code> - Get interactions</li>
+                                    <li><code>POST /users/{id}/process-comprehensive</code> - Process user</li>
+                                    <li><code>POST /users/{id}/generate-recommendations</code> - Generate recommendations</li>
+                                    <li><code>GET /users/{id}/results</code> - Get results</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-primary">Root Endpoints</h6>
+                                <ul class="list-unstyled">
+                                    <li><code>GET /</code> - Root info</li>
+                                    <li><code>GET /ping</code> - Ping test</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="/static/js/api-tester.js"></script>
+</body>
+</html>
