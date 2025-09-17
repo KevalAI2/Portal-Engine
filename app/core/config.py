@@ -70,7 +70,7 @@ class Settings(BaseSettings):
         env="PREFETCH_SERVICE_URL"
     )
     recommendation_api_url: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:8080",
         env="RECOMMENDATION_API_URL"
     )
     recommendation_api_provider: str = Field(
