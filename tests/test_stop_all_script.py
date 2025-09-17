@@ -118,3 +118,26 @@ def test_main_invokes_expected_stops(monkeypatch):
     assert any("lsof -ti:6379" in c for c in calls)
 
 
+
+def test_run_command_nonzero(monkeypatch, capsys):
+    class FakeCompleted:
+        returncode = 2
+        stdout = "out"
+        stderr = "err"
+
+    monkeypatch.setattr(stop_all.subprocess, "run", lambda *a, **k: FakeCompleted())
+    res = stop_all.run_command("badcmd")
+    assert res.returncode == 2
+    out = capsys.readouterr().out
+    assert "failed with exit code 2" in out
+
+
+def test_run_command_exception(monkeypatch, capsys):
+    def boom(*a, **k):
+        raise stop_all.subprocess.SubprocessError("boom")
+
+    monkeypatch.setattr(stop_all.subprocess, "run", boom)
+    res = stop_all.run_command("badcmd")
+    assert res is None
+    out = capsys.readouterr().out
+    assert "Error executing command" in out

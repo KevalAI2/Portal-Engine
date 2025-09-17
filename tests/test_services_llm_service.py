@@ -303,6 +303,13 @@ class TestLLMService:
             assert kwargs.get("user_id") == "user_123"
             assert kwargs.get("error") == "Publish error"
 
+    def test_store_in_redis_setex_error(self, llm_service):
+        """Test Redis setex failure doesn't raise and logs error."""
+        llm_service.redis_client.setex.side_effect = Exception("setex error")
+        with patch('app.services.llm_service.logger') as mock_logger:
+            llm_service._store_in_redis("user_123", {"recommendations": {}})
+            assert mock_logger.error.called
+
     def test_get_recommendations_from_redis(self, llm_service):
         """Test retrieving recommendations from Redis."""
         llm_service.redis_client.get.return_value = '{"movies": []}'
@@ -321,6 +328,14 @@ class TestLLMService:
             assert "Error retrieving" in args[0]
             assert kwargs.get("user_id") == "user_123"
             assert kwargs.get("error") == "Redis error"
+
+    def test_get_recommendations_from_redis_invalid_json(self, llm_service):
+        """Test invalid JSON stored in Redis returns None and logs error."""
+        llm_service.redis_client.get.return_value = "{bad json}"
+        with patch('app.services.llm_service.logger') as mock_logger:
+            result = llm_service.get_recommendations_from_redis("user_123")
+            assert result is None
+            assert mock_logger.error.called
 
     def test_clear_recommendations_user(self, llm_service):
         """Test clearing recommendations for a user."""
@@ -350,3 +365,36 @@ class TestLLMService:
             assert set(result.keys()) == {"movies", "music", "places", "events"}
             assert all(isinstance(items, list) for items in result.values())
             mock_logger.info.assert_called_with("Generating demo recommendations for prompt: test prompt")
+
+    def test_llm_service_initialization_redis_failure(self):
+        """Init should raise when Redis ping fails."""
+        with patch('app.services.llm_service.settings') as mock_settings, \
+             patch('app.services.llm_service.redis.Redis') as mock_redis:
+            mock_settings.redis_host = "localhost"
+            client = MagicMock()
+            client.ping.side_effect = Exception("no redis")
+            mock_redis.return_value = client
+            with pytest.raises(Exception):
+                LLMService(timeout=5)
+
+    def test_generate_personalized_reason_without_user(self, llm_service):
+        """Reason generation without user_id uses base reasons and dot."""
+        with patch('app.services.llm_service.random.choice', side_effect=lambda x: x[0]):
+            item = {"genre": "Drama", "artist": "Someone", "type": "Park"}
+            reason_movie = llm_service._generate_personalized_reason(item, "movies", "My prompt", None, "BCN")
+            assert reason_movie.endswith(".")
+            reason_place = llm_service._generate_personalized_reason(item, "places", None, None, "BCN")
+            assert reason_place.endswith(".")
+
+    def test_generate_personalized_reason_with_user(self, llm_service):
+        """Reason generation with user_id appends personalized addition."""
+        with patch('app.services.llm_service.random.choice', side_effect=lambda x: x[0]):
+            item = {"genre": "Action"}
+            reason = llm_service._generate_personalized_reason(item, "movies", "Likes action", "u1", "BCN")
+            assert ", and " in reason
+
+    def test_clear_recommendations_all_no_keys(self, llm_service):
+        """Clearing all when no keys found should not call delete."""
+        llm_service.redis_client.keys.return_value = []
+        llm_service.clear_recommendations()
+        llm_service.redis_client.delete.assert_not_called()

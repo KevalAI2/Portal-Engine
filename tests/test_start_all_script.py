@@ -111,3 +111,37 @@ def test_main_exits_when_rabbitmq_missing(tmp_path, monkeypatch):
     assert exc.value.code == 1
 
 
+def test_main_exits_when_celery_app_check_fails(tmp_path, monkeypatch):
+    # Force celery app check to fail early
+    monkeypatch.setattr(start_all, "check_celery_app_exists", lambda _rd: False)
+    monkeypatch.setattr(start_all.os, "getcwd", lambda: str(tmp_path))
+    with pytest.raises(SystemExit) as exc:
+        start_all.main()
+    assert exc.value.code == 1
+
+
+def test_run_command_background_and_sync(monkeypatch):
+    # Background returns a Popen-like object
+    class FakePopen:
+        def __init__(self):
+            self.pid = 111
+        def poll(self):
+            return None
+        def communicate(self):
+            return ("", "")
+
+    monkeypatch.setattr(start_all.subprocess, "Popen", lambda *a, **k: FakePopen())
+
+    proc = start_all.run_command("echo hi", background=True)
+    assert hasattr(proc, "pid") and proc.pid == 111
+
+    # Sync nonzero exit
+    class FakeCompleted:
+        returncode = 5
+        stdout = "out"
+        stderr = "err"
+    monkeypatch.setattr(start_all.subprocess, "run", lambda *a, **k: FakeCompleted())
+
+    res = start_all.run_command("badcmd")
+    assert res.returncode == 5
+

@@ -475,14 +475,14 @@ def test_run_tests_endpoint_single_file_branch(monkeypatch):
             ],
         }
         report_path.write_text(json.dumps(summary), encoding="utf-8")
-        # selected becomes "test_ui_router.py" for file param starting with tests/
+        # Provide coverage for a real source file (not in tests) to satisfy filters
         coverage_xml.write_text(
             """
 <coverage>
   <packages>
     <package>
       <classes>
-        <class filename="tests/test_ui_router.py">
+        <class filename="app/core/config.py">
           <lines>
             <line number="1" hits="1"/>
             <line number="2" hits="1"/>
@@ -500,7 +500,8 @@ def test_run_tests_endpoint_single_file_branch(monkeypatch):
 
     monkeypatch.setattr(ui_mod.subprocess, "run", fake_run)
     client = TestClient(app)
-    r = client.post("/ui/tests/run", json={"file": "tests/test_ui_router.py"})
+    # Request single-file run for a source file so the coverage parser can include it
+    r = client.post("/ui/tests/run", json={"file": "app/core/config.py"})
     assert r.status_code == 200
     data = r.json()
     assert data["is_single_file"] is True
@@ -534,6 +535,48 @@ def test_run_tests_endpoint_bad_xml(monkeypatch):
     client = TestClient(app)
     r = client.post("/ui/tests/run", json={"file": "ALL"})
     assert r.status_code == 200 and r.json()["success"] is True
+
+
+def test_run_tests_endpoint_single_file_filters_out_tests_folder(monkeypatch):
+    # Ensure that when single-file is under tests/, coverage overall can still be computed as 0
+    import app.api.routers.ui as ui_mod
+    project_root = Path(ui_mod.__file__).resolve().parents[3]
+    report_path = project_root / "test-results.json"
+    coverage_xml = project_root / "coverage.xml"
+
+    def fake_run(cmd, cwd=None, capture_output=False, text=False):
+        report = {
+            "summary": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "xpassed": 0, "xfailed": 0, "warnings": 0},
+            "tests": [{"nodeid": "tests/test_ui_router.py::t", "outcome": "passed"}],
+        }
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        coverage_xml.write_text(
+            """
+<coverage>
+  <packages>
+    <package>
+      <classes>
+        <class filename="tests/test_ui_router.py">
+          <lines>
+            <line number="1" hits="1"/>
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>
+            """.strip(),
+            encoding="utf-8",
+        )
+        return types.SimpleNamespace(returncode=0, stdout="OK", stderr="")
+
+    monkeypatch.setattr(ui_mod.subprocess, "run", fake_run)
+    client = TestClient(app)
+    r = client.post("/ui/tests/run", json={"file": "tests/test_ui_router.py"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["is_single_file"] is True
+    assert data["coverage"]["overall_percent"] == 0.0
 
 
 def test_performance_metrics_no_data(monkeypatch):
