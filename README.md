@@ -33,13 +33,14 @@ A production-grade, modular recommendation system built with FastAPI, Celery, Ra
 - **Dynamic Prompts**: LLM-powered prompt generation based on user context
 - **Health Monitoring**: Comprehensive health checks for all services
 - **API Documentation**: Auto-generated OpenAPI/Swagger documentation
-- **Testing**: Comprehensive test suite with mocking
+- **Real-time Notifications**: WebSocket-based distributed notification service with Redis Streams and Pub/Sub
+- **Testing**: Comprehensive async-aware test suite with mocking
 - **Local Development**: Easy setup for local development
 - **Production Ready**: Structured logging, error handling, and monitoring
 
 ## 📋 Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Redis
 - RabbitMQ
 
@@ -124,6 +125,27 @@ GET /api/v1/health/ready
 GET /api/v1/health/live
 ```
 
+### Notification Service Endpoints
+
+```http
+# WebSocket connection (server-side notification stream)
+GET /ws/{user_id}  (WebSocket)
+
+# Service health (includes Redis stream status)
+GET /health
+
+# Service statistics (local and distributed)
+GET /stats
+GET /stats/distributed
+
+# Send notifications
+POST /notify/stream/{user_id}    (via Redis Streams)
+POST /notify/direct/{user_id}    (direct to socket or stored as pending)
+
+# Debug (only when ENABLE_DEBUG=true at import time)
+GET /debug/pending/{user_id}
+```
+
 ## 🔧 Configuration
 
 The application uses environment-based configuration. Key settings in `.env`:
@@ -158,7 +180,7 @@ PREFETCH_SERVICE_URL=http://prefetch-service:8000
 
 ## 🧪 Testing
 
-The project includes a comprehensive test suite with 100% unit test coverage for all components. Tests are organized by category and include unit tests, integration tests, and performance tests.
+The project includes a comprehensive async-aware test suite with high coverage across components, including the WebSocket notification service (Redis Streams consumer, Pub/Sub listeners, fanout, and background tasks). Tests are organized by category and include unit tests, integration tests, and performance tests.
 
 ### Quick Start
 
@@ -253,6 +275,9 @@ pytest
 # Run with coverage
 pytest --cov=app --cov-report=html
 
+# Run notification service tests with coverage
+pytest tests/test_notification_service.py --cov=notification_service --cov-report=term-missing -v
+
 # Run specific test file
 pytest tests/test_main_app.py
 
@@ -285,6 +310,7 @@ The test suite provides comprehensive coverage for:
 - **Models**: All Pydantic schemas and data models
 - **Utilities**: Prompt builder and helper functions
 - **Main Application**: FastAPI app, middleware, and error handling
+- **Notification Service**: WebSocket endpoints, Redis Streams consumer, Pub/Sub listeners, fanout, background tasks
 
 ### Test Structure
 
@@ -497,6 +523,7 @@ portal-engine/
 │   ├── workers/               # Celery workers and tasks
 │   │   ├── celery_app.py     # Celery configuration
 │   │   └── tasks.py          # Background tasks
+│   ├── notification_service.py # Distributed WebSocket notification service (FastAPI app)
 │   └── main.py               # FastAPI application entry point
 ├── tests/                    # Test suite
 │   ├── conftest.py           # Pytest configuration
@@ -550,6 +577,11 @@ portal-engine/
 - **Process Management**: Use systemd or supervisor for process management
 - **Metrics**: Prometheus metrics (can be added)
 - **Tracing**: Distributed tracing support (can be added)
+
+### Notes for Notification Service
+
+- The `/debug/pending/{user_id}` endpoint is only registered when `ENABLE_DEBUG=true` at import time (environment variable read during module import). In tests, reload the module with the flag set to expose the route.
+- WebSocket endpoint: `/ws/{user_id}` supports heartbeats (server-initiated) and client `ping`/server `pong` messages.
 
 ## 🤝 Contributing
 
