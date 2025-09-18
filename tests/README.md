@@ -167,8 +167,11 @@ If you prefer to use pytest directly:
 # Run all tests
 pytest
 
-# Run with coverage
+# Run with coverage (core app)
 pytest --cov=app --cov-report=html
+
+# Run notification service tests with coverage
+pytest tests/test_notification_service.py --cov=notification_service --cov-report=term-missing -v
 
 # Run specific test file
 pytest tests/test_main_app.py

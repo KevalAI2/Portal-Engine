@@ -1009,14 +1009,35 @@ async def run_all_tests_endpoint(request: Request):
                 tree = ET.parse(str(coverage_xml))
                 root = tree.getroot()
                 
-                # IMPROVED: Filter out __init__.py files and empty files
+                # IMPROVED: Filter out __init__.py files, test files, and other excluded files
                 filtered_files = []
-                excluded_files = ["run_all_tests.py", "run_tests.py", "update_test_docs.py" , "tests/conftest.py"]
+                excluded_files = ["run_all_tests.py", "run_tests.py", "update_test_docs.py"]
+                
                 for pkg in root.findall("packages/package"):
                     for clazz in pkg.findall("classes/class"):
                         filename = clazz.attrib.get("filename", "")
-                        # Skip __init__.py files, empty files, and excluded files
-                        if filename.endswith("__init__.py") or not filename or filename in excluded_files:
+                        
+                        # Convert to Path object for easier manipulation
+                        file_path = pathlib.Path(filename)
+                        
+                        # Skip __init__.py files
+                        if file_path.name == "__init__.py":
+                            continue
+                            
+                        # Skip empty filenames
+                        if not filename:
+                            continue
+                            
+                        # Skip files in the tests directory (check if any parent is 'tests')
+                        if 'tests' in file_path.parts:
+                            continue
+                            
+                        # Skip specifically excluded files (check just the filename)
+                        if file_path.name in excluded_files:
+                            continue
+                            
+                        # Skip if absolute path contains tests directory
+                        if '/tests/' in filename or '\\tests\\' in filename:
                             continue
                         
                         lines = clazz.find("lines")
