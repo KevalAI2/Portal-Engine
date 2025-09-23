@@ -8,6 +8,15 @@ from app.core.config import settings
 import redis
 from datetime import datetime, timezone
 import math
+from dataclasses import dataclass
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TWO_TOWER_TORCH_AVAILABLE = True
+except Exception:
+    TWO_TOWER_TORCH_AVAILABLE = False
 
 logger = get_logger("llm_service")
 
@@ -54,6 +63,9 @@ class LLMService:
         self.BASE_SCORE = 0.5
         self.SCALE = 0.2  # scale for converting weighted sum into [0,1] range
         self.HALF_LIFE_DAYS = 30  # recency half-life for interactions
+        # Two-Tower model (lazy init)
+        self._two_tower_model = None
+        self._two_tower_device = "cpu"
     
     def _normalize_key(self, value: str) -> str:
         """Normalize string keys for comparison"""
@@ -82,6 +94,193 @@ class LLMService:
         except Exception:
             pass
         return 0.5
+
+    # ---------------- Two-Tower embedding utilities (user/item encoders) ---------------- #
+    def _hashing_vectorizer(self, text: str, dim: int = 128) -> List[float]:
+        """Simple deterministic hashing vectorizer for text into fixed-size vector.
+        Avoids external deps; suitable for similarity features.
+        """
+        if not isinstance(text, str) or not text:
+            return [0.0] * dim
+        vec = [0.0] * dim
+        for token in text.lower().split():
+            h = hash(token) % dim
+            sign = 1.0 if (hash(token + "_") % 2 == 0) else -1.0
+            vec[h] += sign
+        return vec
+
+    def _l2_normalize(self, vec: List[float]) -> List[float]:
+        mag = math.sqrt(sum(v * v for v in vec))
+        if mag == 0.0:
+            return vec
+        return [v / mag for v in vec]
+
+    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        if na == 0.0 or nb == 0.0:
+            return 0.0
+        return dot / (na * nb)
+
+    def _bucketize(self, value: Optional[float], thresholds: List[float]) -> int:
+        """Return bucket index for numeric value given ascending thresholds."""
+        if value is None:
+            return -1
+        for idx, th in enumerate(thresholds):
+            if value < th:
+                return idx
+        return len(thresholds)
+
+    def _build_user_embedding(
+        self,
+        user_profile: Optional[Dict[str, Any]],
+        location_data: Optional[Dict[str, Any]],
+        history: Dict[str, List[Dict[str, str]]],
+        interaction_data: Optional[Dict[str, Any]]
+    ) -> List[float]:
+        dim = 128
+        accum = [0.0] * dim
+
+        # Profile-based signals
+        if user_profile:
+            age = user_profile.get("age")
+            if isinstance(age, (int, float)):
+                age_bucket = self._bucketize(float(age), [18, 25, 35, 45, 55, 65])
+                age_vec = self._hashing_vectorizer(f"age_bucket_{age_bucket}", dim)
+                accum = [a + b for a, b in zip(accum, age_vec)]
+            interests = user_profile.get("interests", [])
+            if isinstance(interests, list) and interests:
+                txt = " ".join(str(i) for i in interests[:20])
+                accum = [a + b for a, b in zip(accum, self._hashing_vectorizer("interests " + txt, dim))]
+            # Keywords from preferences (legacy)
+            prefs = user_profile.get("preferences", {})
+            kw_values = []
+            try:
+                kw = prefs.get("Keywords (legacy)", {})
+                for ev in kw.get("example_values", [])[:20]:
+                    val = ev.get("value")
+                    if val:
+                        kw_values.append(str(val))
+            except Exception:
+                pass
+            if kw_values:
+                accum = [a + b for a, b in zip(accum, self._hashing_vectorizer("keywords " + " ".join(kw_values), dim))]
+
+        # Location-based signals
+        if location_data:
+            cur = location_data.get("current_location")
+            if isinstance(cur, dict):
+                city = cur.get("city") or cur.get("name") or ""
+            else:
+                city = cur if isinstance(cur, str) else ""
+            if city:
+                accum = [a + b for a, b in zip(accum, self._hashing_vectorizer("city " + city, dim))]
+
+        # Interaction history signals
+        action_weights = {
+            'liked': 2.0, 'saved': 1.5, 'shared': 1.2, 'clicked': 0.8,
+            'view': 0.4, 'ignored': -1.0, 'disliked': -1.5
+        }
+        for category, items in history.items():
+            for inter in items[:200]:
+                text_bits = []
+                if category in ["movies", "music"]:
+                    text_bits.append(inter.get("title", ""))
+                    text_bits.append(inter.get("genre", ""))
+                else:
+                    text_bits.append(inter.get("name", ""))
+                    text_bits.append(inter.get("type", "") if category == "places" else inter.get("category", ""))
+                action = inter.get("action", "view").lower()
+                weight = action_weights.get(action, 0.2)
+                rec = self._recency_weight(inter.get("timestamp", ""))
+                v = self._hashing_vectorizer(" ".join(text_bits), dim)
+                accum = [a + weight * rec * b for a, b in zip(accum, v)]
+
+        # Engagement level (optional)
+        if interaction_data:
+            es = interaction_data.get("engagement_score")
+            if isinstance(es, (int, float)):
+                bucket = self._bucketize(float(es), [0.2, 0.4, 0.6, 0.8])
+                accum = [a + b for a, b in zip(accum, self._hashing_vectorizer(f"engagement_{bucket}", dim))]
+
+        return self._l2_normalize(accum)
+
+    def _build_item_embedding(self, item: Dict[str, Any], category: str) -> List[float]:
+        dim = 128
+        parts: List[str] = []
+        # Common textual fields
+        parts.append(str(item.get("title") or item.get("name") or ""))
+        parts.append(str(item.get("description", "")))
+        genre_key = {"movies": "genre", "music": "genre", "places": "type", "events": "category"}.get(category, "genre")
+        parts.append(str(item.get(genre_key, "")))
+        # Keywords
+        if isinstance(item.get("keywords"), list):
+            parts.append(" ".join(map(str, item.get("keywords"))))
+
+        vec = self._hashing_vectorizer(" ".join(parts), dim)
+
+        # Numeric/popularity features via bucket tags
+        # rating
+        rating_raw = item.get("rating")
+        try:
+            rating_val = float(str(rating_raw).replace('/10', '').replace('/5', '')) if rating_raw is not None else None
+        except Exception:
+            rating_val = None
+        if rating_val is not None:
+            rb = self._bucketize(rating_val, [2, 3, 3.5, 4, 4.5, 8, 9])
+            vec = [v + u for v, u in zip(vec, self._hashing_vectorizer(f"rating_bucket_{rb}", dim))]
+
+        # listeners/popularity
+        listeners_raw = item.get("monthly_listeners")
+        try:
+            listeners = float(str(listeners_raw).rstrip('M').replace(',', '')) if listeners_raw is not None and 'M' in str(listeners_raw) else None
+        except Exception:
+            listeners = None
+        if listeners is not None:
+            lb = self._bucketize(listeners, [1, 5, 10, 25, 50, 100])
+            vec = [v + u for v, u in zip(vec, self._hashing_vectorizer(f"listeners_bucket_{lb}", dim))]
+
+        # distance/location relevance
+        dist = item.get("distance_from_user")
+        if isinstance(dist, (int, float)):
+            db = self._bucketize(float(dist), [1, 5, 10, 20, 50, 100, 500])
+            vec = [v + u for v, u in zip(vec, self._hashing_vectorizer(f"distance_bucket_{db}", dim))]
+
+        # recency
+        now = datetime.now(timezone.utc)
+        recency_val = None
+        if category == "movies":
+            try:
+                y = int(item.get("year")) if item.get("year") else None
+                if y:
+                    recency_val = max(0, now.year - y)
+            except Exception:
+                recency_val = None
+        elif category == "music":
+            try:
+                y = int(item.get("release_year")) if item.get("release_year") else None
+                if y:
+                    recency_val = max(0, now.year - y)
+            except Exception:
+                recency_val = None
+        elif category == "events":
+            try:
+                date_str = item.get("date")
+                if date_str:
+                    d = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+                    if d.tzinfo is None:
+                        d = d.replace(tzinfo=timezone.utc)
+                    recency_val = (d - now).days
+            except Exception:
+                recency_val = None
+        if recency_val is not None:
+            rb = self._bucketize(float(recency_val), [0, 7, 30, 90, 365, 5 * 365])
+            vec = [v + u for v, u in zip(vec, self._hashing_vectorizer(f"recency_bucket_{rb}", dim))]
+
+        return self._l2_normalize(vec)
 
     def _category_prior(self, item: Dict[str, Any], category: str) -> float:
         """Small prior boost based on intrinsic item quality/popularity."""
@@ -202,281 +401,432 @@ class LLMService:
         
         return history
 
-    def _compute_ranking_score(self, item: Dict[str, Any], category: str, history: Dict[str, List[Dict[str, str]]], 
-                               user_profile: Dict[str, Any] = None, location_data: Dict[str, Any] = None, 
-                               interaction_data: Dict[str, Any] = None) -> float:
-        """
-        Compute raw ranking score using multiple factors with expanded ranges for more variation:
-        - Base: 0.2
-        - Quality: 0.0-0.3 (ratings, popularity, box office/chart/capacity)
-        - Profile: 0.0-0.25 (age, interest/keyword matches)
-        - Location: 0.0-0.2 (overlap, distance)
-        - Interaction: -0.2-0.3 (actions with recency and amplification)
-        - Recency: -0.2-0.2 (item age/date, penalty for past events)
-        """
-        base_score = 0.2
+    # ---------------- PyTorch Two-Tower Model Definitions ---------------- #
+    def _torch_available(self) -> bool:
+        return bool(TWO_TOWER_TORCH_AVAILABLE)
 
-        # Quality boost with more factors
-        quality_boost = 0.0
-        rating = item.get('rating')
-        if rating:
+    def _hash_tokens(self, text: str, vocab_size: int) -> List[int]:
+        if not isinstance(text, str) or not text:
+            return []
+        tokens = [t for t in text.lower().split() if t]
+        return [abs(hash(t)) % vocab_size for t in tokens[:256]]
+
+    def _extract_user_numeric_features(
+        self,
+        user_profile: Dict[str, Any],
+        location_data: Dict[str, Any],
+        interaction_data: Dict[str, Any],
+        history: Dict[str, List[Dict[str, str]]]
+    ) -> List[float]:
+        # Stable ordering of features
+        age = user_profile.get("age")
+        age_norm = float(age) / 100.0 if isinstance(age, (int, float)) else 0.0
+        engagement = interaction_data.get("engagement_score") if isinstance(interaction_data, dict) else None
+        engagement = float(engagement) if isinstance(engagement, (int, float)) else 0.0
+        # History sizes
+        h_movies = len(history.get("movies", []))
+        h_music = len(history.get("music", []))
+        h_places = len(history.get("places", []))
+        h_events = len(history.get("events", []))
+        total_h = h_movies + h_music + h_places + h_events
+        h_movies_n = min(1.0, h_movies / 200.0)
+        h_music_n = min(1.0, h_music / 200.0)
+        h_places_n = min(1.0, h_places / 200.0)
+        h_events_n = min(1.0, h_events / 200.0)
+        total_h_n = min(1.0, total_h / 800.0)
+        # Location presence flags
+        cur_loc = location_data.get("current_location") if isinstance(location_data, dict) else None
+        has_city = 1.0 if (isinstance(cur_loc, dict) and cur_loc.get("city")) or isinstance(cur_loc, str) else 0.0
+        return [age_norm, engagement, h_movies_n, h_music_n, h_places_n, h_events_n, total_h_n, has_city]
+
+    def _extract_item_numeric_features(self, item: Dict[str, Any], category: str) -> List[float]:
+        def to_float(value: Any) -> Optional[float]:
             try:
-                rating_val = float(str(rating).replace('/10', '').replace('/5', ''))
-                if category in ["places", "events"]:
-                    if rating_val >= 4.5:
-                        quality_boost += 0.25
-                    elif rating_val >= 4.0:
-                        quality_boost += 0.18
-                    elif rating_val >= 3.5:
-                        quality_boost += 0.12
-                    elif rating_val >= 3.0:
-                        quality_boost += 0.06
-                else:
-                    if rating_val >= 8.5:
-                        quality_boost += 0.25
-                    elif rating_val >= 7.5:
-                        quality_boost += 0.18
-                    elif rating_val >= 6.5:
-                        quality_boost += 0.12
-                    elif rating_val >= 5.0:
-                        quality_boost += 0.06
-            except:
-                pass
-        
-        if category == "movies":
-            box = item.get('box_office', '')
-            if box:
-                try:
-                    num = float(box.strip('$').rstrip('M').strip())
-                    if num > 300:
-                        quality_boost += 0.15
-                    elif num > 200:
-                        quality_boost += 0.1
-                    elif num > 100:
-                        quality_boost += 0.05
-                except:
-                    pass
-        elif category == "music":
-            listeners = item.get('monthly_listeners', '')
+                if value is None:
+                    return None
+                if isinstance(value, (int, float)):
+                    return float(value)
+                s = str(value)
+                s = s.replace(",", "").replace("$", "").replace("€", "")
+                s = s.replace("/10", "").replace("/5", "")
+                if s.endswith("M"):
+                    return float(s[:-1]) * 1e6
+                return float(s)
+            except Exception:
+                return None
+
+        rating = to_float(item.get("rating"))
+        rating_scale = 10.0 if category in ["movies", "music"] else 5.0
+        rating_n = max(0.0, min(1.0, (rating or 0.0) / rating_scale))
+        box_office = to_float(item.get("box_office")) or 0.0
+        box_office_n = min(1.0, (math.log1p(max(0.0, box_office)) / 20.0))
+        capacity = to_float(item.get("capacity")) or 0.0
+        capacity_n = min(1.0, capacity / 100000.0)
+        listeners = to_float(item.get("monthly_listeners")) or 0.0
+        listeners_n = min(1.0, math.log1p(listeners) / 20.0)
+        chart_pos = to_float(item.get("chart_position"))
+        chart_pos_n = 1.0 - min(1.0, max(0.0, (chart_pos or 100.0) / 100.0))
+        price_min = to_float(item.get("price_min")) or 0.0
+        price_min_n = 1.0 - min(1.0, price_min / 500.0)
+        age_rating = to_float(item.get("age_rating"))
+        age_restriction = to_float(item.get("age_restriction"))
+        age_gate_n = 1.0 - min(1.0, ((age_rating or age_restriction or 0.0) / 21.0))
+        dist = to_float(item.get("distance_from_user")) or 0.0
+        dist_n = 1.0 - min(1.0, dist / 100.0)
+        return [rating_n, box_office_n, capacity_n, listeners_n, chart_pos_n, price_min_n, age_gate_n, dist_n]
+
+    def _preference_alignment_boost(self, item: Dict[str, Any], category: str, user_profile: Dict[str, Any]) -> float:
+        """Compute a deterministic preference-alignment boost in [0, 0.2].
+        Emphasizes 'very likely' traits by scanning item metadata fields.
+        """
+        try:
+            prefs_texts: List[str] = []
+            # gather declared interests from profile
+            interests = (user_profile or {}).get("interests")
+            if isinstance(interests, list):
+                prefs_texts.extend([str(x).lower() for x in interests])
+            # also scan preferences free-form keys/values
+            prefs = (user_profile or {}).get("preferences", {})
+            if isinstance(prefs, dict):
+                prefs_texts.extend([str(k).lower() for k in list(prefs.keys())[:20]])
+                for v in list(prefs.values())[:20]:
+                    if isinstance(v, (str, int, float)):
+                        prefs_texts.append(str(v).lower())
+
+            # Extract item text pieces
+            parts: List[str] = []
+            parts.append(str(item.get("title") or item.get("name") or ""))
+            parts.append(str(item.get("description", "")))
+            genre_key = {"movies": "genre", "music": "genre", "places": "type", "events": "category"}.get(category, "genre")
+            parts.append(str(item.get(genre_key, "")))
+            if isinstance(item.get("keywords"), list):
+                parts.extend([str(k) for k in item.get("keywords")])
+            item_text = (" ".join(parts)).lower()
+
+            # Heuristic: count strong matches of salient cues
+            strong_terms = [
+                "african-american", "hispanic", "latin", "latino", "afrobeats", "jazz", "urban",
+                "dance", "dancing", "sunset", "solitary", "minimalist", "museum", "park",
+                "action", "drama", "science fiction", "festival"
+            ]
+            # Expand with profile-derived cues (words following 'very likely') if present
+            for t in list(prefs_texts):
+                if "very likely" in t:
+                    strong_terms.append(t.replace("very likely", "").strip())
+
+            match_score = 0.0
+            for term in strong_terms:
+                t = term.strip()
+                if not t:
+                    continue
+                if t in item_text:
+                    match_score += 1.0
+
+            # Cap and scale. Multiple matches → stronger boost
+            match_score = min(match_score, 5.0)
+            # Map 0..5 → 0..0.2
+            return 0.04 * match_score
+        except Exception:
+            return 0.0
+
+    # Define placeholders first to satisfy static analysis; override with real impls if torch is available
+    class HashingTextEncoder:  # type: ignore
+        pass
+
+    class UserTower:  # type: ignore
+        pass
+
+    class ItemTower:  # type: ignore
+        pass
+
+    class TwoTowerModel:  # type: ignore
+        pass
+
+    if TWO_TOWER_TORCH_AVAILABLE:
+        class HashingTextEncoder(nn.Module):  # type: ignore
+            def __init__(self, vocab_size: int, embed_dim: int):
+                super().__init__()
+                self.emb = nn.EmbeddingBag(vocab_size, embed_dim, mode="mean")
+
+            def forward(self, token_indices: torch.Tensor) -> torch.Tensor:
+                if token_indices is None or token_indices.numel() == 0:
+                    return torch.zeros(self.emb.embedding_dim, device=next(self.parameters()).device)
+                offsets = torch.tensor([0], device=token_indices.device, dtype=torch.long)
+                return self.emb(token_indices, offsets).squeeze(0)
+
+        class UserTower(nn.Module):  # type: ignore
+            def __init__(self, vocab_size: int = 50000, text_embed_dim: int = 64, numeric_dim: int = 8, out_dim: int = 64):
+                super().__init__()
+                self.text = HashingTextEncoder(vocab_size, text_embed_dim)  # type: ignore[name-defined]
+                self.numeric = nn.Sequential(
+                    nn.Linear(numeric_dim, 64), nn.ReLU(), nn.Linear(64, out_dim)
+                )
+                self.proj = nn.Linear(text_embed_dim + out_dim, out_dim)
+
+            def forward(self, token_indices: torch.Tensor, numeric: torch.Tensor) -> torch.Tensor:
+                t = self.text(token_indices)
+                n = self.numeric(numeric)
+                x = torch.cat([t, n], dim=-1)
+                x = self.proj(x)
+                return F.normalize(x, p=2, dim=-1)
+
+        class ItemTower(nn.Module):  # type: ignore
+            def __init__(self, vocab_size: int = 50000, text_embed_dim: int = 64, numeric_dim: int = 8, out_dim: int = 64):
+                super().__init__()
+                self.text = HashingTextEncoder(vocab_size, text_embed_dim)  # type: ignore[name-defined]
+                self.numeric = nn.Sequential(
+                    nn.Linear(numeric_dim, 64), nn.ReLU(), nn.Linear(64, out_dim)
+                )
+                self.proj = nn.Linear(text_embed_dim + out_dim, out_dim)
+
+            def forward(self, token_indices: torch.Tensor, numeric: torch.Tensor) -> torch.Tensor:
+                t = self.text(token_indices)
+                n = self.numeric(numeric)
+                x = torch.cat([t, n], dim=-1)
+                x = self.proj(x)
+                return F.normalize(x, p=2, dim=-1)
+
+        class TwoTowerModel(nn.Module):  # type: ignore
+            def __init__(self, vocab_size: int = 50000, text_embed_dim: int = 64, user_numeric_dim: int = 8, item_numeric_dim: int = 8, out_dim: int = 64):
+                super().__init__()
+                self.user = UserTower(vocab_size, text_embed_dim, user_numeric_dim, out_dim)  # type: ignore[name-defined]
+                self.item = ItemTower(vocab_size, text_embed_dim, item_numeric_dim, out_dim)  # type: ignore[name-defined]
+
+            def forward(self, u_tokens: torch.Tensor, u_numeric: torch.Tensor, i_tokens: torch.Tensor, i_numeric: torch.Tensor) -> torch.Tensor:
+                ue = self.user(u_tokens, u_numeric)
+                ie = self.item(i_tokens, i_numeric)
+                sim = F.cosine_similarity(ue, ie, dim=-1)  # [-1, 1]
+                return sim
+
+    def _init_two_tower_if_needed(self) -> None:
+        if not self._torch_available():
+            return
+        if self._two_tower_model is None:
             try:
-                num_listeners = float(str(listeners).rstrip('M').strip()) if 'M' in str(listeners) else 0
-                quality_boost += min(0.15, num_listeners / 500)
-            except:
-                pass
-            chart = item.get('chart_position', '')
-            if chart:
-                if '#1' in chart:
-                    quality_boost += 0.2
-                else:
+                device = "cuda" if hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu"
+                self._two_tower_device = device
+                model_cls = globals().get("TwoTowerModel")
+                if model_cls is None:
+                    return
+                self._two_tower_model = model_cls(
+                    vocab_size=50000, text_embed_dim=64, user_numeric_dim=8, item_numeric_dim=8, out_dim=64
+                ).to(device)
+                self._two_tower_model.eval()
+                logger.info("Initialized Two-Tower model", device=device)
+            except Exception as e:
+                logger.warning("Failed to initialize Two-Tower model", error=str(e))
+                self._two_tower_model = None
+
+    def train_two_tower_mock(
+        self,
+        user_id: str,
+        catalog: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        epochs: int = 1,
+        lr: float = 1e-3,
+        negatives: int = 2
+    ) -> None:
+        """Optional mock training using interaction history as positives and sampled negatives.
+        This is a lightweight, single-sample-at-a-time trainer intended for quick bootstrapping.
+        """
+        if not self._torch_available():
+            logger.info("PyTorch not available; skipping mock training")
+            return
+        self._init_two_tower_if_needed()
+        if self._two_tower_model is None:
+            return
+        model = self._two_tower_model
+        model.train()
+        opt = torch.optim.Adam(model.parameters(), lr=lr)
+
+        history = self._get_user_interaction_history(user_id)
+
+        # Build a simple catalog if not provided
+        if catalog is None:
+            catalog = {k: v for k, v in history.items()}  # very small; real use should pass a richer catalog
+
+        def sample_negatives(cat: str, k: int) -> List[Dict[str, Any]]:
+            pool = catalog.get(cat, [])
+            if not pool:
+                return []
+            return random.sample(pool, min(k, len(pool)))
+
+        for _ in range(epochs):
+            for cat, items in history.items():
+                for pos in items:
                     try:
-                        pos = int(chart.strip('#').split()[0])
-                        if pos <= 5:
-                            quality_boost += 0.15
-                        elif pos <= 10:
-                            quality_boost += 0.1
-                        elif pos <= 20:
-                            quality_boost += 0.05
-                    except:
+                        # Positive sample featurization
+                        u_text = []
+                        # Collect user text signals
+                        interests = (history.get("movies", []) + history.get("music", []))[:10]
+                        for it in interests:
+                            title = it.get("title") or it.get("name") or ""
+                            u_text.extend(self._hash_tokens(title, 50000))
+                        u_num = torch.tensor(self._extract_user_numeric_features({}, {}, {}, history), dtype=torch.float32)
+                        i_text = []
+                        title = pos.get("title") or pos.get("name") or ""
+                        genre = pos.get("genre") or pos.get("type") or pos.get("category") or ""
+                        i_text.extend(self._hash_tokens(title + " " + genre, 50000))
+                        i_num = torch.tensor(self._extract_item_numeric_features(pos, cat), dtype=torch.float32)
+
+                        # Move to device
+                        device = self._two_tower_device
+                        u_tokens = torch.tensor(u_text if u_text else [0], dtype=torch.long, device=device)
+                        u_num = u_num.to(device)
+                        i_tokens = torch.tensor(i_text if i_text else [0], dtype=torch.long, device=device)
+                        i_num = i_num.to(device)
+
+                        # Positive label 1.0
+                        sim_pos = model(u_tokens, u_num, i_tokens, i_num)
+                        loss = (1.0 - sim_pos).clamp_min(0).mean()  # encourage high cosine
+
+                        # Negatives
+                        for neg in sample_negatives(cat, negatives):
+                            n_text = []
+                            n_title = neg.get("title") or neg.get("name") or ""
+                            n_genre = neg.get("genre") or neg.get("type") or neg.get("category") or ""
+                            n_text.extend(self._hash_tokens(n_title + " " + n_genre, 50000))
+                            n_num = torch.tensor(self._extract_item_numeric_features(neg, cat), dtype=torch.float32).to(device)
+                            n_tokens = torch.tensor(n_text if n_text else [0], dtype=torch.long, device=device)
+                            sim_neg = model(u_tokens, u_num, n_tokens, n_num)
+                            loss = loss + (sim_neg.clamp_min(-1) + 1.0).mean()  # push negatives down
+
+                        opt.zero_grad()
+                        loss.backward()
+                        opt.step()
+                    except Exception:
+                        continue
+        model.eval()
+
+    def _compute_ranking_score(
+        self,
+        item: Dict[str, Any],
+        category: str,
+        history: Dict[str, List[Dict[str, str]]],
+        user_profile: Dict[str, Any] = None,
+        location_data: Dict[str, Any] = None,
+        interaction_data: Dict[str, Any] = None
+    ) -> float:
+        """Compute a ranking score using a PyTorch Two-Tower model if available.
+
+        Falls back to the deterministic two-tower hashing encoder if PyTorch or model is unavailable.
+        Keeps output compatible with existing downstream normalization (~[0.1, 1.5]).
+        """
+        try:
+            # Prefer PyTorch model if available
+            if self._torch_available():
+                self._init_two_tower_if_needed()
+                if self._two_tower_model is not None:
+                    device = self._two_tower_device
+
+                    # Build user tokens (from profile interests, prefs, location, and history titles/genres)
+                    user_tokens: List[int] = []
+                    try:
+                        if isinstance(user_profile, dict):
+                            interests = user_profile.get("interests", [])
+                            if isinstance(interests, list):
+                                user_tokens.extend(self._hash_tokens(" ".join(map(str, interests)), 50000))
+                            prefs = user_profile.get("preferences", {})
+                            if isinstance(prefs, dict):
+                                user_tokens.extend(self._hash_tokens(" ".join(map(str, prefs.keys())), 50000))
+                        if isinstance(location_data, dict):
+                            city = ""
+                            cur = location_data.get("current_location")
+                            if isinstance(cur, dict):
+                                city = cur.get("city") or cur.get("name") or ""
+                            elif isinstance(cur, str):
+                                city = cur
+                            if city:
+                                user_tokens.extend(self._hash_tokens(city, 50000))
+                        for cat, items in (history or {}).items():
+                            for inter in items[:50]:
+                                title = inter.get("title") or inter.get("name") or ""
+                                genre = inter.get("genre") or inter.get("type") or inter.get("category") or ""
+                                user_tokens.extend(self._hash_tokens(title + " " + genre, 50000))
+                    except Exception:
                         pass
-        elif category in ["places", "events"]:
-            total_ratings = item.get('user_ratings_total', 0)
-            if total_ratings > 5000:
-                quality_boost += 0.15
-            elif total_ratings > 1000:
-                quality_boost += 0.1
-            elif total_ratings > 100:
-                quality_boost += 0.05
-            if category == "events":
-                cap = item.get('capacity', 0)
-                if cap > 20000:
-                    quality_boost += 0.15
-                elif cap > 5000:
-                    quality_boost += 0.1
-                elif cap > 1000:
-                    quality_boost += 0.05
-                price_min = item.get('price_min', float('inf'))
-                if price_min == 0:
-                    quality_boost += 0.1
-                elif price_min < 20:
-                    quality_boost += 0.07
-                elif price_min < 50:
-                    quality_boost += 0.03
-        quality_boost = min(0.3, quality_boost)
 
-        # Profile boost with keyword matching
-        profile_boost = 0.0
-        if user_profile:
-            user_age = user_profile.get('age')
-            if user_age and category in ["movies", "events"]:
-                if category == "movies":
-                    age_rating = item.get('age_rating', '')
-                    if ('R' in age_rating and user_age >= 17) or ('PG-13' in age_rating and user_age >= 13) or 'PG' in age_rating:
-                        profile_boost += 0.08
-                elif category == "events":
-                    age_restriction = item.get('age_restriction', '')
-                    if 'All ages' in age_restriction or ('18+' in age_restriction and user_age >= 18):
-                        profile_boost += 0.08
-            interests = user_profile.get('interests', [])
-            if interests:
-                item_text = f"{item.get('title', '')} {item.get('name', '')} {item.get('genre', '')} {item.get('description', '')} { ' '.join(item.get('keywords', [])) }".lower()
-                match_count = sum(1 for interest in interests if interest.lower() in item_text)
-                keyword_match = sum(1 for kw in item.get('keywords', []) if any(i.lower() in kw.lower() for i in interests))
-                profile_boost += min(0.15, (match_count + keyword_match) * 0.05)
-            interests_lower = [i.lower() for i in interests]
-            if 'sociable' in interests_lower:
-                if category == "music":
-                    mood_lower = item.get('mood', '').lower()
-                    if 'upbeat' in mood_lower:
-                        profile_boost += 0.1
-                    elif 'melancholic' in mood_lower:
-                        profile_boost -= 0.1
-                if category == "movies":
-                    genre_lower = item.get('genre', '').lower()
-                    if 'comedy' in genre_lower or 'adventure' in genre_lower:
-                        profile_boost += 0.05
-                if category == "places":
-                    if item.get('outdoor_seating', False) or item.get('wifi_available', False):
-                        profile_boost += 0.05
-                if category == "events":
-                    cat_lower = item.get('category', '').lower()
-                    if 'music' in cat_lower or 'festival' in cat_lower:
-                        profile_boost += 0.1
-                    elif 'art' in cat_lower:
-                        profile_boost += 0.08
-                    elif 'sports' in cat_lower:
-                        profile_boost += 0.05
-            if 'science-enthusiast' in interests_lower:
-                if category == "movies" or category == "music":
-                    genre_lower = item.get('genre', '').lower()
-                    if 'science fiction' in genre_lower or 'electronic' in genre_lower:
-                        profile_boost += 0.1
-        profile_boost = max(-0.2, min(0.25, profile_boost))
+                    # Build user numeric features
+                    u_numeric_list = self._extract_user_numeric_features(
+                        user_profile or {}, location_data or {}, interaction_data or {}, history or {}
+                    )
 
-        # Location boost with overlap score and distance
-        location_boost = 0.0
-        if location_data and category in ["places", "events"]:
-            current_location = location_data.get('current_location', '').lower()
-            if current_location:
-                item_location = ""
-                if category == "places":
-                    item_location = f"{item.get('vicinity', '')} {item.get('query', '')}".lower()
-                elif category == "events":
-                    item_location = f"{item.get('address', '')} {item.get('venue', '')}".lower()
-                if current_location in item_location:
-                    location_boost = 0.2
-                else:
-                    current_words = set(current_location.split())
-                    item_words = set(item_location.split())
-                    overlap = len(current_words & item_words) / len(current_words) if current_words else 0
-                    location_boost = overlap * 0.15
-                distance = item.get('distance_from_user', float('inf'))
-                if distance < 10:
-                    location_boost += 0.1
-                elif distance < 20:
-                    location_boost += 0.05
-                elif distance < 50:
-                    location_boost += 0.02
-            location_boost = min(0.2, location_boost)
+                    # Build item tokens and numeric features
+                    item_tokens: List[int] = []
+                    try:
+                        title = item.get("title") or item.get("name") or ""
+                        desc = item.get("description", "")
+                        genre_key = {"movies": "genre", "music": "genre", "places": "type", "events": "category"}.get(category, "genre")
+                        genre = item.get(genre_key, "")
+                        kw = item.get("keywords")
+                        kw_text = " ".join(map(str, kw)) if isinstance(kw, list) else ""
+                        cat_text = str(category or "")
+                        item_tokens.extend(self._hash_tokens(" ".join([title, desc, genre, kw_text, cat_text]), 50000))
+                    except Exception:
+                        pass
+                    i_numeric_list = self._extract_item_numeric_features(item or {}, category)
 
-        # Interaction boost with recency and amplification
-        interaction_boost = 0.0
-        similarity_boost = 0.0
-        field_mapping = {"movies": "title", "music": "title", "places": "name", "events": "name"}
-        genre_field = {"movies": "genre", "music": "genre", "places": "type", "events": "category"}[category]
-        field_name = field_mapping[category]
-        item_identifier = self._normalize_key(item.get(field_name, ""))
-        item_genres = item.get(genre_field, '').lower().split('/')
-        if item_identifier:
-            total_weight = 0.0
-            count = 0
-            for inter in history.get(category, []):
-                hist_id = self._normalize_key(inter.get(field_name, ""))
-                if hist_id == item_identifier:
-                    action = inter.get("action", "view").lower()
-                    weight = {
-                        'liked': 0.2, 'saved': 0.15, 'shared': 0.12, 'clicked': 0.08,
-                        'view': 0.04, 'ignored': -0.1, 'disliked': -0.2
-                    }.get(action, 0.0)
-                    recency = self._recency_weight(inter.get('timestamp', ''))
-                    total_weight += weight * recency
-                    count += 1
-                # Similarity
-                hist_genres = inter.get(genre_field, '').lower().split('/')
-                overlap = len(set(item_genres) & set(hist_genres)) / max(1, len(item_genres)) if item_genres else 0
-                recency = self._recency_weight(inter.get('timestamp', ''))
-                if inter.get("action", "").lower() in ['liked', 'saved', 'shared', 'clicked']:
-                    similarity_boost += 0.1 * overlap * recency
-                elif inter.get("action", "").lower() in ['ignored', 'disliked']:
-                    similarity_boost -= 0.05 * overlap * recency
-            if count > 0:
-                interaction_boost = (total_weight / count) * (1 + 0.5 * (count - 1))
-            similarity_boost = max(-0.1, min(0.15, similarity_boost))
-            interaction_boost += similarity_boost
-        interaction_boost = max(-0.2, min(0.3, interaction_boost))
+                    # Convert to tensors
+                    u_tokens_t = torch.tensor(user_tokens if user_tokens else [0], dtype=torch.long, device=device)
+                    i_tokens_t = torch.tensor(item_tokens if item_tokens else [0], dtype=torch.long, device=device)
+                    u_num_t = torch.tensor(u_numeric_list, dtype=torch.float32, device=device)
+                    i_num_t = torch.tensor(i_numeric_list, dtype=torch.float32, device=device)
 
-        # Recency boost with penalty for old/past
-        recency_boost = 0.0
-        penalty = 0.0
-        now = datetime.now(timezone.utc)
-        if category == "movies":
-            year = item.get('year')
-            if year:
-                try:
-                    y = int(year)
-                    age = now.year - y
-                    if age <= 1:
-                        recency_boost = 0.2
-                    elif age <= 3:
-                        recency_boost = 0.15
-                    elif age <= 5:
-                        recency_boost = 0.1
-                    if age > 10:
-                        penalty = -0.05
-                    if age > 20:
-                        penalty = -0.1
-                except:
-                    pass
-        elif category == "music":
-            year = item.get('release_year')
-            if year:
-                try:
-                    y = int(year)
-                    age = now.year - y
-                    if age <= 1:
-                        recency_boost = 0.2
-                    elif age <= 2:
-                        recency_boost = 0.15
-                    elif age <= 4:
-                        recency_boost = 0.1
-                    if age > 6:
-                        penalty = -0.05
-                except:
-                    pass
-        elif category == "events":
-            date_str = item.get('date')
-            if date_str:
-                try:
-                    event_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    if event_date.tzinfo is None:
-                        event_date = event_date.replace(tzinfo=timezone.utc)
-                    days_diff = (event_date - now).days
-                    if days_diff > 90:
-                        recency_boost = 0.05
-                    elif days_diff > 30:
-                        recency_boost = 0.1
-                    elif days_diff > 7:
-                        recency_boost = 0.15
-                    elif days_diff >= 0:
-                        recency_boost = 0.2
-                    else:
-                        penalty = min(-0.2, -0.05 * abs(days_diff) / 30)
-                except:
-                    pass
-        recency_boost += penalty
-        recency_boost = max(-0.2, min(0.2, recency_boost))
+                    with torch.no_grad():
+                        sim = self._two_tower_model(u_tokens_t, u_num_t, i_tokens_t, i_num_t).item()  # [-1, 1]
+                    sim01 = (sim + 1.0) / 2.0  # [0, 1]
 
-        raw_score = base_score + quality_boost + profile_boost + location_boost + interaction_boost + recency_boost
-        return max(0.0, min(1.5, raw_score))  # Allow up to 1.5 for normalization buffer
+                    # Optional small priors as before
+                    prior = 0.0
+                    rating_raw = item.get("rating")
+                    try:
+                        rating_val = float(str(rating_raw).replace("/10", "").replace("/5", "")) if rating_raw is not None else None
+                        if rating_val is not None:
+                            scale = 10.0 if category in ["movies", "music"] else 5.0
+                            prior += min(0.1, max(0.0, rating_val) / scale * 0.1)
+                    except Exception:
+                        pass
+                    dist = item.get("distance_from_user")
+                    if isinstance(dist, (int, float)) and dist >= 0:
+                        if dist < 5:
+                            prior += 0.08
+                        elif dist < 20:
+                            prior += 0.04
+
+                    # Preference alignment booster
+                    pref_boost = self._preference_alignment_boost(item or {}, category, user_profile or {})
+                    score = 0.1 + 1.4 * sim01 + prior + pref_boost
+                    return max(0.0, min(1.5, score))
+
+            # Fallback to deterministic two-tower hashing encoder-based similarity
+            user_embed = self._build_user_embedding(
+                user_profile or {},
+                location_data or {},
+                history or {},
+                interaction_data or {}
+            )
+            item_embed = self._build_item_embedding(item or {}, category)
+            sim = self._cosine_similarity(user_embed, item_embed)
+            sim01 = (sim + 1.0) / 2.0
+            prior = 0.0
+            rating_raw = item.get("rating")
+            try:
+                rating_val = float(str(rating_raw).replace("/10", "").replace("/5", "")) if rating_raw is not None else None
+                if rating_val is not None:
+                    scale = 10.0 if category in ["movies", "music"] else 5.0
+                    prior += min(0.1, max(0.0, rating_val) / scale * 0.1)
+            except Exception:
+                pass
+            dist = item.get("distance_from_user")
+            if isinstance(dist, (int, float)) and dist >= 0:
+                if dist < 5:
+                    prior += 0.08
+                elif dist < 20:
+                    prior += 0.04
+            pref_boost = self._preference_alignment_boost(item or {}, category, user_profile or {})
+            score = 0.1 + 1.4 * sim01 + prior + pref_boost
+            return max(0.0, min(1.5, score))
+        except Exception:
+            return 0.5
 
     async def generate_recommendations(self, prompt: str, user_id: str = None, current_city: str = "Barcelona") -> Dict[str, Any]:
         """
