@@ -2,7 +2,7 @@
 Users API router
 """
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Path
 from fastapi.responses import Response
 from app.core.logging import get_logger, log_exception, log_api_call, log_api_response
 from app.models.schemas import UserProfile, LocationData, InteractionData
@@ -73,7 +73,7 @@ async def options_user_results(user_id: str):
 
 @router.get("/{user_id}/profile")
 async def get_user_profile(
-    user_id: str,
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier"),
     user_service: UserProfileService = Depends(get_optional_user_profile_service)
 ):
     """
@@ -105,12 +105,10 @@ async def get_user_profile(
         
         log_api_response("user_profile_service", f"/{user_id}/profile", True, 
                         user_id=user_id, 
-                        profile_name=user_profile.name,
-                        profile_email=user_profile.email)
+                        profile_name=user_profile.name)
         logger.info("Retrieved user profile", 
                    user_id=user_id, 
                    profile_name=user_profile.name,
-                   profile_email=user_profile.email,
                    endpoint="get_user_profile")
         return APIResponse.success_response(
             data=user_profile,
@@ -137,7 +135,7 @@ async def get_user_profile(
 
 @router.get("/{user_id}/location")
 async def get_user_location_data(
-    user_id: str,
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier"),
     lie_service: LIEService = Depends(get_optional_lie_service)
 ):
     """
@@ -200,7 +198,9 @@ async def get_user_location_data(
 
 
 @router.get("/{user_id}/interactions")
-async def get_user_interaction_data(user_id: str):
+async def get_user_interaction_data(
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier")
+):
     """
     Get comprehensive interaction data for a user
     
@@ -252,7 +252,10 @@ async def get_user_interaction_data(user_id: str):
 
 
 @router.post("/{user_id}/process-comprehensive")
-async def process_user_comprehensive_endpoint(user_id: str, priority: int = 5):
+async def process_user_comprehensive_endpoint(
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier"),
+    priority: int = Query(5, ge=1, le=10, description="Processing priority (1-10)")
+):
     """
     Enqueue a user for comprehensive processing via RabbitMQ
     
@@ -318,7 +321,9 @@ async def process_user_comprehensive_endpoint(user_id: str, priority: int = 5):
 
 
 @router.post("/{user_id}/process-comprehensive-direct")
-async def process_user_comprehensive_direct_endpoint(user_id: str):
+async def process_user_comprehensive_direct_endpoint(
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier")
+):
     """
     Process a user comprehensively (direct execution, not via queue)
     
@@ -362,8 +367,8 @@ async def process_user_comprehensive_direct_endpoint(user_id: str):
 
 @router.get("/{user_id}/processing-status/{task_id}")
 async def get_processing_status(
-    user_id: str,
-    task_id: str,
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier"),
+    task_id: str = Path(..., min_length=1, max_length=100, description="Task identifier"),
     celery_app: Celery = Depends(get_celery_app)
 ):
     """Get processing status for a task."""
@@ -605,10 +610,10 @@ async def generate_recommendations_direct(
 
 @router.get("/{user_id}/results")
 async def get_ranked_results(
-    user_id: str,
+    user_id: str = Path(..., min_length=1, max_length=100, description="User identifier"),
     category: Optional[str] = Query(None, description="Filter by category (movies, music, places, events)"),
-    limit: Optional[int] = Query(5, description="Limit results per category"),
-    min_score: Optional[float] = Query(0.0, description="Minimum ranking score"),
+    limit: Optional[int] = Query(5, ge=1, le=100, description="Limit results per category (1-100)"),
+    min_score: Optional[float] = Query(0.0, ge=0.0, le=1.0, description="Minimum ranking score (0.0-1.0)"),
     results_service: ResultsService = Depends(get_results_service)
 ):
     """
