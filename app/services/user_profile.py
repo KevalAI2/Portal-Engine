@@ -272,10 +272,13 @@ class UserProfileService(BaseService):
                 "confidence_metric": self.confidence_metrics.get(category, round(random.uniform(0.6, 0.9), 5))
             }
         
-        # Add additional profile fields
+        # Add additional profile fields - limit interests to 50 items max
+        all_interests = [item["value"] for category in profile_data["preferences"].values() 
+                        for item in category["example_values"][:3]]  # Take first 3 from each category
+        
+        # Limit to 50 interests maximum to respect UserProfile validation
         profile_data.update({
-            "interests": [item["value"] for category in profile_data["preferences"].values() 
-                         for item in category["example_values"][:3]],  # Take first 3 from each category
+            "interests": all_interests[:50],  # Ensure max 50 interests
             "generated_at": datetime.now().isoformat(),
             "profile_completeness": round(random.uniform(0.7, 0.95), 2)
         })
