@@ -18,6 +18,17 @@ from app.api.routers import health, users, ui
 from app.models.responses import APIResponse
 from app.utils.serialization import safe_serialize
 import json
+import uuid
+
+try:
+    # Lightweight rate limiting using slowapi if available
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    _RATE_LIMITING_AVAILABLE = True
+except Exception:
+    _RATE_LIMITING_AVAILABLE = False
 
 class SafeJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -107,6 +118,23 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Optional rate limiting
+if _RATE_LIMITING_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, lambda request, exc: JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"}))
+    app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    """Attach a correlation ID to each request for traceability."""
+    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
 
 
 @app.middleware("http")
