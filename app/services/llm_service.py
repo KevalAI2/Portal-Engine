@@ -35,8 +35,12 @@ class LLMService:
         try:
             self.redis_client = redis.Redis(
                 host=settings.redis_host,
-                port=6379,
+                port=getattr(settings, "redis_port", 6379),
                 db=1,  # Use different DB for recommendations
+                password=getattr(settings, "redis_password", None),
+                socket_connect_timeout=3,
+                socket_timeout=5,
+                health_check_interval=30,
                 decode_responses=True
             )
             # Test Redis connection
@@ -66,6 +70,21 @@ class LLMService:
         # Two-Tower model (lazy init)
         self._two_tower_model = None
         self._two_tower_device = "cpu"
+
+    def _validate_cached_payload(self, payload: Any) -> bool:
+        """Basic schema checks for cached recommendation payloads."""
+        try:
+            if not isinstance(payload, dict):
+                return False
+            if "success" in payload and payload.get("success") is False:
+                return True  # explicit failure is acceptable to cache briefly
+            if "recommendations" not in payload or not isinstance(payload["recommendations"], dict):
+                return False
+            if "metadata" in payload and not isinstance(payload["metadata"], dict):
+                return False
+            return True
+        except Exception:
+            return False
     
     def _normalize_key(self, value: str) -> str:
         """Normalize string keys for comparison"""
@@ -1262,6 +1281,9 @@ class LLMService:
     def _store_in_redis(self, user_id: str, data: Dict[str, Any]):
         """Store recommendations in Redis"""
         try:
+            if not self._validate_cached_payload(data):
+                logger.warning("Skipping cache store: payload failed validation", user_id=user_id)
+                return
             key = f"recommendations:{user_id}"
             data_size = len(json.dumps(data, default=str))
             
@@ -1271,11 +1293,11 @@ class LLMService:
                        data_size_bytes=data_size,
                        ttl_seconds=86400)
             
-            self.redis_client.setex(
-                key,
-                86400,
-                json.dumps(data, default=str)
-            )
+            payload = json.dumps(data, default=str)
+            # Use a pipeline for atomicity/perf
+            with self.redis_client.pipeline(transaction=True) as pipe:
+                pipe.setex(key, 86400, payload)
+                pipe.execute()
             
             logger.info("Recommendations stored successfully in Redis",
                        user_id=user_id,
@@ -1289,7 +1311,15 @@ class LLMService:
                     "user_id": str(user_id),
                     "message": {"content": "Your new recommendations are ready!"}
                 }
-                pub_client = redis.Redis(host=settings.redis_host, port=6379, db=0, decode_responses=True)
+                pub_client = redis.Redis(
+                    host=settings.redis_host,
+                    port=getattr(settings, "redis_port", 6379),
+                    password=getattr(settings, "redis_password", None),
+                    db=0,
+                    decode_responses=True,
+                    socket_connect_timeout=3,
+                    socket_timeout=5,
+                )
                 pub_client.publish("notifications:user", json.dumps(notify_payload))
                 
                 logger.info("Notification published successfully",
@@ -1309,21 +1339,32 @@ class LLMService:
             log_exception("llm_service", e, {"user_id": user_id, "operation": "store_redis"})
     
     def get_recommendations_from_redis(self, user_id: str) -> Dict[str, Any]:
-        """Retrieve recommendations from Redis"""
+        """Retrieve recommendations from Redis with pipelining support"""
         try:
             key = f"recommendations:{user_id}"
             logger.info("Retrieving recommendations from Redis",
                        user_id=user_id,
                        key=key)
             
-            data = self.redis_client.get(key)
+            # Use pipeline for better performance
+            with self.redis_client.pipeline(transaction=False) as pipe:
+                pipe.get(key)
+                pipe.ttl(key)
+                results = pipe.execute()
+            
+            data, ttl = results
             if data:
                 data_size = len(data)
                 logger.info("Recommendations retrieved successfully from Redis",
                            user_id=user_id,
                            key=key,
-                           data_size_bytes=data_size)
-                return json.loads(data)
+                           data_size_bytes=data_size,
+                           ttl_seconds=ttl)
+                obj = json.loads(data)
+                if not self._validate_cached_payload(obj):
+                    logger.warning("Cached payload failed validation, ignoring", user_id=user_id)
+                    return None
+                return obj
             else:
                 logger.info("No recommendations found in Redis",
                            user_id=user_id,
@@ -1336,6 +1377,47 @@ class LLMService:
                         error=str(e))
             log_exception("llm_service", e, {"user_id": user_id, "operation": "get_redis"})
             return None
+
+    def get_multiple_recommendations(self, user_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Retrieve recommendations for multiple users using pipelining"""
+        try:
+            if not user_ids:
+                return {}
+            
+            keys = [f"recommendations:{user_id}" for user_id in user_ids]
+            logger.info("Retrieving multiple recommendations from Redis",
+                       user_count=len(user_ids),
+                       keys=keys)
+            
+            # Use pipeline for batch retrieval
+            with self.redis_client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.get(key)
+                results = pipe.execute()
+            
+            recommendations = {}
+            for i, (user_id, data) in enumerate(zip(user_ids, results)):
+                if data:
+                    try:
+                        obj = json.loads(data)
+                        if self._validate_cached_payload(obj):
+                            recommendations[user_id] = obj
+                        else:
+                            logger.warning("Cached payload failed validation, skipping", user_id=user_id)
+                    except Exception as e:
+                        logger.warning("Failed to parse cached data", user_id=user_id, error=str(e))
+            
+            logger.info("Multiple recommendations retrieved",
+                       requested_count=len(user_ids),
+                       retrieved_count=len(recommendations))
+            return recommendations
+            
+        except Exception as e:
+            logger.error("Error retrieving multiple recommendations from Redis",
+                        user_count=len(user_ids),
+                        error=str(e))
+            log_exception("llm_service", e, {"user_ids": user_ids, "operation": "get_multiple_redis"})
+            return {}
     
     def clear_recommendations(self, user_id: str = None):
         """Clear recommendations from Redis"""
