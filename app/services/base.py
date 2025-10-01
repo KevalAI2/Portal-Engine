@@ -5,6 +5,28 @@ import httpx
 from typing import Optional, Dict, Any
 from app.core.logging import get_logger
 from app.core.config import settings
+import time
+
+
+class _SimpleCircuitBreaker:
+    """Very lightweight in-process circuit breaker to protect external calls."""
+    def __init__(self, failure_threshold: int = 5, recovery_time: int = 30):
+        self.failure_threshold = failure_threshold
+        self.recovery_time = recovery_time
+        self.failures = 0
+        self.open_until = 0.0
+
+    def allow(self) -> bool:
+        return time.time() >= self.open_until
+
+    def record_success(self) -> None:
+        self.failures = 0
+        self.open_until = 0.0
+
+    def record_failure(self) -> None:
+        self.failures += 1
+        if self.failures >= self.failure_threshold:
+            self.open_until = time.time() + self.recovery_time
 
 
 class BaseService:
@@ -14,6 +36,7 @@ class BaseService:
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
         self.logger = get_logger(self.__class__.__name__)
+        self._circuit = _SimpleCircuitBreaker()
     
     async def _make_request(
         self, 
@@ -35,6 +58,11 @@ class BaseService:
         if headers:
             default_headers.update(headers)
         
+        # Circuit breaker check
+        if not self._circuit.allow():
+            self.logger.warning("Circuit open, skipping external request", url=url)
+            return {"success": False, "error": "circuit_open"}
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.request(
@@ -46,6 +74,7 @@ class BaseService:
                 )
                 
                 response.raise_for_status()
+                self._circuit.record_success()
                 return response.json()
                 
         except httpx.HTTPStatusError as e:
@@ -55,6 +84,7 @@ class BaseService:
                 status_code=e.response.status_code,
                 response_text=e.response.text
             )
+            self._circuit.record_failure()
             raise
         except httpx.RequestError as e:
             self.logger.error(
@@ -62,6 +92,7 @@ class BaseService:
                 url=url,
                 error=str(e)
             )
+            self._circuit.record_failure()
             raise
         except Exception as e:
             self.logger.error(
@@ -69,6 +100,7 @@ class BaseService:
                 url=url,
                 error=str(e)
             )
+            self._circuit.record_failure()
             raise
     
     async def health_check(self) -> bool:
