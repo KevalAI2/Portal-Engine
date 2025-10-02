@@ -74,8 +74,39 @@ class StandardResponse:
         if error_code:
             response["error_code"] = error_code
             
-        if details:
+        if details is not None:
             response["details"] = details
+            
+        return response
+    
+    @staticmethod
+    def error_with_details(
+        message: str = "An error occurred",
+        status_code: int = 500,
+        error_code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a standardized error response that always includes details.
+        
+        Args:
+            message: Error message
+            status_code: HTTP status code
+            error_code: Specific error code
+            details: Additional error details (will be included even if None)
+            
+        Returns:
+            Standardized error response dictionary
+        """
+        response = {
+            "success": False,
+            "message": message,
+            "status_code": status_code,
+            "details": details
+        }
+        
+        if error_code:
+            response["error_code"] = error_code
             
         return response
     
@@ -94,7 +125,7 @@ class StandardResponse:
         Returns:
             Standardized validation error response dictionary
         """
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=422,
             error_code="VALIDATION_ERROR",
@@ -117,7 +148,7 @@ class StandardResponse:
             Standardized not found response dictionary
         """
         details = {"resource_type": resource_type} if resource_type else None
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=404,
             error_code="NOT_FOUND",
@@ -139,7 +170,7 @@ class StandardResponse:
         Returns:
             Standardized unauthorized response dictionary
         """
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=401,
             error_code="UNAUTHORIZED",
@@ -161,7 +192,7 @@ class StandardResponse:
         Returns:
             Standardized forbidden response dictionary
         """
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=403,
             error_code="FORBIDDEN",
@@ -184,7 +215,7 @@ class StandardResponse:
             Standardized rate limited response dictionary
         """
         details = {"retry_after": retry_after} if retry_after else None
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=429,
             error_code="RATE_LIMITED",
@@ -206,7 +237,7 @@ class StandardResponse:
         Returns:
             Standardized server error response dictionary
         """
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=500,
             error_code="SERVER_ERROR",
@@ -229,7 +260,7 @@ class StandardResponse:
             Standardized service unavailable response dictionary
         """
         details = {"retry_after": retry_after} if retry_after else None
-        return StandardResponse.error(
+        return StandardResponse.error_with_details(
             message=message,
             status_code=503,
             error_code="SERVICE_UNAVAILABLE",
@@ -301,7 +332,7 @@ def standardize_pagination(
         "page": page,
         "page_size": page_size,
         "total_items": len(data),
-        "has_next": len(data) == page_size
+        "has_next": len(data) == page_size and total_count is not None and (page * page_size) < total_count
     }
     
     if total_count is not None:
