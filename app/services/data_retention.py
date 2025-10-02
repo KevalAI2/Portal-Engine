@@ -271,6 +271,7 @@ class DataRetentionService:
         start_time = time.time()
         cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
         deleted_count = 0
+        errors = []
         
         try:
             # Get all keys
@@ -284,7 +285,9 @@ class DataRetentionService:
                         self.redis_client.delete(key)
                         deleted_count += 1
                 except Exception as e:
+                    error_msg = f"Key cleanup error for {key}: {str(e)}"
                     logger.warning("Key cleanup error", key=key, error=str(e))
+                    errors.append(error_msg)
                     continue
             
             duration = time.time() - start_time
@@ -293,11 +296,16 @@ class DataRetentionService:
                        keys_deleted=deleted_count, 
                        duration=duration)
             
-            return {
+            result = {
                 "keys_deleted": deleted_count,
                 "max_age_hours": max_age_hours,
                 "duration": duration
             }
+            
+            if errors:
+                result["error"] = "; ".join(errors)
+            
+            return result
             
         except Exception as e:
             logger.error("Age-based cleanup failed", error=str(e))
