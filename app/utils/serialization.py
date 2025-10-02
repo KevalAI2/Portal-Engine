@@ -26,9 +26,10 @@ class SafeJSONEncoder(json.JSONEncoder):
     """
     
     def __init__(self, *args, **kwargs):
+        # Extract max_depth before passing to parent
+        self._max_depth = kwargs.pop('max_depth', 10)
         super().__init__(*args, **kwargs)
         self._serialized_objects: Set[int] = set()
-        self._max_depth = kwargs.get('max_depth', 10)
         self._current_depth = 0
     
     def encode(self, obj: Any) -> str:
@@ -57,23 +58,24 @@ class SafeJSONEncoder(json.JSONEncoder):
             self._current_depth -= 1
             self._serialized_objects.discard(obj_id)
     
+    
     def _serialize_object(self, obj: Any) -> Any:
         """Serialize specific object types"""
         # Handle None
         if obj is None:
             return None
         
+        # Handle Pydantic models directly to avoid circular reference issues
+        if isinstance(obj, BaseModel):
+            return obj.model_dump()
+        
+        # Handle datetime objects before circular reference check
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        
         # Handle basic types
         if isinstance(obj, (str, int, float, bool)):
             return obj
-        
-        # Handle datetime objects
-        if isinstance(obj, datetime):
-            return {
-                "_type": "datetime",
-                "value": obj.isoformat(),
-                "timezone": str(obj.tzinfo) if obj.tzinfo else None
-            }
         
         if isinstance(obj, date):
             return {
@@ -367,12 +369,16 @@ def safe_json_dumps(
         JSON string
     """
     try:
+        # Create encoder class with max_depth
+        class EncoderWithMaxDepth(SafeJSONEncoder):
+            def __init__(self, **kwargs):
+                super().__init__(max_depth=max_depth, **kwargs)
+        
         return json.dumps(
             obj,
-            cls=SafeJSONEncoder,
+            cls=EncoderWithMaxDepth,
             ensure_ascii=ensure_ascii,
             indent=indent,
-            max_depth=max_depth,
             **kwargs
         )
     except Exception as e:
@@ -412,6 +418,14 @@ def safe_serialize(obj: Any) -> Any:
         Serializable representation
     """
     try:
+        # Handle datetime objects directly
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        
+        # Handle Pydantic models directly
+        if isinstance(obj, BaseModel):
+            return obj.model_dump()
+        
         # Try JSON serialization first
         json_str = safe_json_dumps(obj)
         return safe_json_loads(json_str)
@@ -480,7 +494,9 @@ def safe_model_dump(
     obj: Any,
     *,
     exclude_none: bool = False,
-    by_alias: bool = False
+    by_alias: bool = False,
+    exclude: Optional[Union[Set[str], Dict[str, Any]]] = None,
+    include: Optional[Union[Set[str], Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Backward-compatible helper to safely dump Pydantic models or mappings to plain dicts.
@@ -491,15 +507,71 @@ def safe_model_dump(
     """
     try:
         if isinstance(obj, BaseModel):
-            return obj.model_dump(exclude_none=exclude_none, by_alias=by_alias)  # Pydantic v2
+            # Build kwargs for model_dump
+            dump_kwargs = {
+                "exclude_none": exclude_none,
+                "by_alias": by_alias
+            }
+            if exclude is not None:
+                dump_kwargs["exclude"] = exclude
+            if include is not None:
+                dump_kwargs["include"] = include
+            return obj.model_dump(**dump_kwargs)  # Pydantic v2
+        
         if isinstance(obj, dict):
+            # If no filtering is needed, return the same object
+            if exclude is None and include is None and not exclude_none:
+                return obj
+            
+            # For dicts, apply exclude/include filters manually
+            result = dict(obj)
+            if exclude is not None:
+                if isinstance(exclude, set):
+                    result = {k: v for k, v in result.items() if k not in exclude}
+                elif isinstance(exclude, dict):
+                    # Handle nested exclusions (simplified)
+                    for key in exclude:
+                        if key in result:
+                            del result[key]
+            if include is not None:
+                if isinstance(include, set):
+                    result = {k: v for k, v in result.items() if k in include}
+                elif isinstance(include, dict):
+                    # Handle nested inclusions (simplified)
+                    result = {k: v for k, v in result.items() if k in include}
             # Optionally filter None values
-            return {k: v for k, v in obj.items() if not (exclude_none and v is None)}
+            if exclude_none:
+                result = {k: v for k, v in result.items() if v is not None}
+            return result
 
+        # Handle objects with dict() method (legacy Pydantic v1 style)
+        if hasattr(obj, 'dict') and callable(getattr(obj, 'dict')):
+            try:
+                result = obj.dict(exclude_none=exclude_none, by_alias=by_alias)
+                if exclude is not None:
+                    if isinstance(exclude, set):
+                        result = {k: v for k, v in result.items() if k not in exclude}
+                if include is not None:
+                    if isinstance(include, set):
+                        result = {k: v for k, v in result.items() if k in include}
+                return result
+            except Exception:
+                # If dict() method fails, fall through to other methods
+                pass
+        
         # Handle dataclasses
         if is_dataclass(obj):
             raw = {k: getattr(obj, k) for k in obj.__dataclass_fields__.keys()}  # type: ignore[attr-defined]
-            return {k: v for k, v in raw.items() if not (exclude_none and v is None)}
+            result = raw
+            if exclude is not None:
+                if isinstance(exclude, set):
+                    result = {k: v for k, v in result.items() if k not in exclude}
+            if include is not None:
+                if isinstance(include, set):
+                    result = {k: v for k, v in result.items() if k in include}
+            if exclude_none:
+                result = {k: v for k, v in result.items() if v is not None}
+            return result
 
         # Fallback: serialize and deserialize to ensure safety
         serialized = safe_json_dumps(obj)
