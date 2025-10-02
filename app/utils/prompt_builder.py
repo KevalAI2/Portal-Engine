@@ -557,6 +557,60 @@ Respond ONLY with the JSON object in this exact format."""
         
         return prompt
 
+    async def build_prompt(
+        self,
+        user_profile_data: Optional[Dict[str, Any]] = None,
+        location_data: Optional[Dict[str, Any]] = None,
+        interaction_data: Optional[Dict[str, Any]] = None,
+        recommendation_type: str = "place",
+        max_results: int = 10
+    ) -> str:
+        """Build recommendation prompt with user data (async version for Celery tasks)"""
+        try:
+            # Convert string recommendation_type to enum
+            from app.core.constants import RecommendationType
+            if isinstance(recommendation_type, str):
+                rec_type = RecommendationType(recommendation_type)
+            else:
+                rec_type = recommendation_type
+            
+            # Create UserProfile, LocationData, and InteractionData objects if data is available
+            user_profile = None
+            location_data_obj = None
+            interaction_data_obj = None
+            
+            if user_profile_data:
+                from app.models.schemas import UserProfile
+                user_profile = UserProfile(**user_profile_data)
+            
+            if location_data:
+                from app.models.schemas import LocationData
+                location_data_obj = LocationData(**location_data)
+            
+            if interaction_data:
+                from app.models.schemas import InteractionData
+                interaction_data_obj = InteractionData(**interaction_data)
+            
+            # Use the existing build_recommendation_prompt method
+            return self.build_recommendation_prompt(
+                user_profile=user_profile,
+                location_data=location_data_obj,
+                interaction_data=interaction_data_obj,
+                recommendation_type=rec_type,
+                max_results=max_results
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error building prompt: {str(e)}")
+            # Fallback to build_fallback_prompt
+            return self.build_fallback_prompt(
+                user_profile=user_profile_data,
+                location_data=location_data,
+                interaction_data=interaction_data,
+                recommendation_type=RecommendationType.PLACE,
+                max_results=max_results
+            )
+
     def _get_json_structure_requirements(self) -> str:
         return "The JSON structure must match exactly the provided template, with all fields populated appropriately."
 

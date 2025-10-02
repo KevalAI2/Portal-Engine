@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
 import faker
+from faker import Faker
 from app.core.logging import get_logger
 
 logger = get_logger("mock_data_generator")
@@ -57,7 +58,7 @@ class MockDataGenerator:
         # Set seed for reproducible data
         if self.config.seed:
             random.seed(self.config.seed)
-            fake.seed(self.config.seed)
+            Faker.seed(self.config.seed)
         
         # Initialize data consistency tracking
         self._user_consistency: Dict[str, Dict[str, Any]] = {}
