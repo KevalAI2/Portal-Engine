@@ -279,7 +279,7 @@ class TestLLMService:
             llm_service.redis_client.setex.assert_called_with(
                 "recommendations:user_123", 86400, json.dumps(data, default=str)
             )
-            mock_redis_pub.assert_called_with(host="localhost", port=6379, db=0, decode_responses=True)
+            mock_redis_pub.assert_called_with(host="localhost", port=6379, password='', db=0, decode_responses=True, socket_connect_timeout=3, socket_timeout=5)
             mock_pub_client.publish.assert_called()
             mock_logger.info.assert_called()
 
@@ -290,7 +290,7 @@ class TestLLMService:
             mock_pub_client = MagicMock()
             mock_pub_client.publish.side_effect = Exception("Publish error")
             mock_redis_pub.return_value = mock_pub_client
-            llm_service._store_in_redis("user_123", {"recommendations": []})
+            llm_service._store_in_redis("user_123", {"recommendations": {"movies": []}})
             assert mock_logger.error.called
             args, kwargs = mock_logger.error.call_args
             assert "Failed to publish notification" in args[0]
@@ -306,9 +306,9 @@ class TestLLMService:
 
     def test_get_recommendations_from_redis(self, llm_service):
         """Test retrieving recommendations from Redis."""
-        llm_service.redis_client.get.return_value = '{"movies": []}'
+        llm_service.redis_client.get.return_value = '{"recommendations": {"movies": []}}'
         result = llm_service.get_recommendations_from_redis("user_123")
-        assert result == {"movies": []}
+        assert result == {"recommendations": {"movies": []}}
         llm_service.redis_client.get.assert_called_with("recommendations:user_123")
 
     def test_get_recommendations_from_redis_error(self, llm_service):
@@ -602,14 +602,12 @@ class TestLLMService:
 
     def test_store_in_redis_with_serialization_error(self, llm_service):
         """Test Redis storage with serialization error."""
-        # Create data that can't be serialized
+        # Create data that can't be serialized even with default=str
         class Unserializable:
-            pass
+            def __str__(self):
+                raise Exception("Cannot convert to string")
         
-        data = {"unserializable": Unserializable()}
-        
-        # Mock the setex to raise an exception
-        llm_service.redis_client.setex.side_effect = Exception("Serialization error")
+        data = {"recommendations": {"unserializable": Unserializable()}}
         
         with patch('app.services.llm_service.logger') as mock_logger:
             llm_service._store_in_redis("user_123", data)

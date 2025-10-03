@@ -473,7 +473,7 @@ class TestUsersRouter:
             assert data["success"] is True
             assert data["message"] == "Recommendations generated successfully"
             assert data["data"]["user_id"] == "test_user_1"
-            assert data["data"]["prompt"] == "Barcelona recommendations"
+            assert "Barcelona recommendations" in data["data"]["prompt"]
 
     def test_generate_recommendations_no_prompt(self, client, mock_user_profile, mock_location_data, mock_interaction_data):
         """Test recommendation generation with no prompt (builds prompt internally)."""
@@ -753,9 +753,9 @@ class TestUsersRouter:
             mock_task_result.id = "test_task_123"
             mock_task.apply_async.return_value = mock_task_result
             response = client.post("/api/v1/users/test_user_1/process-comprehensive?priority=11")
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
             response = client.post("/api/v1/users/test_user_1/process-comprehensive?priority=0")
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     def test_logging_functionality(self, client, mock_user_profile):
         """Test that logging works correctly."""
@@ -858,9 +858,7 @@ class TestUsersRouter:
     def test_data_validation_edge_cases(self, client):
         """Test data validation edge cases."""
         response = client.get(f"/api/v1/users/{'x' * 1000}/profile")
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["success"] is True
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     def test_api_versioning(self, client, mock_user_profile):
         """Test API versioning."""

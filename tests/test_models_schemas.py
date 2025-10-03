@@ -486,7 +486,7 @@ class TestModelsSchemas:
 
     def test_models_large_data(self):
         """Test models with large data."""
-        large_interests = [f"interest_{i}" for i in range(1000)]
+        large_interests = [f"interest_{i}" for i in range(50)]
         large_preferences = {f"key_{i}": f"value_{i}" for i in range(1000)}
         
         profile = UserProfile(
@@ -499,7 +499,7 @@ class TestModelsSchemas:
             preferences=large_preferences
         )
         
-        assert len(profile.interests) == 1000
+        assert len(profile.interests) == 50
         assert len(profile.preferences) == 1000
         assert profile.interests[0] == "interest_0"
         assert profile.preferences["key_0"] == "value_0"

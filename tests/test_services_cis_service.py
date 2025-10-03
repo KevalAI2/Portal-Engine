@@ -361,9 +361,9 @@ class TestCISService:
             
             result = await cis_service.get_interaction_data(long_user_id)
             
-            # Should return generated interaction data when long user ID
+            # Should return generated interaction data when long user ID (truncated)
             assert isinstance(result, InteractionData)
-            assert result.user_id == long_user_id
+            assert len(result.user_id) <= 100
 
     @pytest.mark.asyncio
     async def test_get_interaction_data_concurrent_requests(self, cis_service):

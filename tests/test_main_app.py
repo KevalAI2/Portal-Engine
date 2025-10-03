@@ -610,11 +610,12 @@ class TestMainApplication:
 
     def test_safe_json_encoder_error(self):
         """Test SafeJSONEncoder with recursive objects."""
+        from app.utils.serialization import safe_json_dumps
         recursive_obj = {}
         recursive_obj["self"] = recursive_obj
-        encoder = SafeJSONEncoder()
-        result = encoder.default(recursive_obj)
+        result = safe_json_dumps(recursive_obj)
         assert isinstance(result, str)
+        assert "Circular reference" in result
 
     def test_options_root_endpoint(self):
         """Test OPTIONS request for root endpoint."""
