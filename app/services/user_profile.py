@@ -3,6 +3,7 @@ User Profile Service with Schema-Based Mock Data Generation
 """
 import random
 import json
+import re
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from app.services.base import BaseService
@@ -208,10 +209,19 @@ class UserProfileService(BaseService):
     def _generate_schema_based_profile(self, user_id: str) -> Dict[str, Any]:
         """Generate comprehensive mock user profile data based on the exact schema structure"""
         
+        # Clean user_id for email generation to avoid invalid email formats
+        clean_user_id = re.sub(r'[^a-zA-Z0-9]', '', user_id)[:20]  # Remove special chars and limit length
+        if not clean_user_id:
+            clean_user_id = "user"
+        
+        # Ensure user_id and name don't exceed length limits
+        truncated_user_id = user_id[:100] if len(user_id) > 100 else user_id
+        truncated_name = f"User-{truncated_user_id}"[:200] if len(f"User-{truncated_user_id}") > 200 else f"User-{truncated_user_id}"
+        
         profile_data = {
-            "user_id": user_id,
-            "name": f"User-{user_id}",
-            "email": f"user{user_id}@example.com",
+            "user_id": truncated_user_id,
+            "name": truncated_name,
+            "email": f"{clean_user_id}@example.com",
             "age": random.randint(18, 65),
             "location": random.choice(self.schema_data["Home Location"]),
             "preferences": {}
@@ -326,4 +336,41 @@ class UserProfileService(BaseService):
             log_exception("user_profile_service", e, {"user_id": user_id, "operation": "generate_profile"})
             return None
     
+    def get_user_profile_sync(self, user_id: str) -> Optional[UserProfile]:
+        """Synchronous version of get_user_profile for Celery tasks"""
+        try:
+            self.logger.info("Generating schema-based mock user profile", 
+                           user_id=user_id,
+                           service="user_profile",
+                           operation="generate_profile")
+            
+            # Generate comprehensive mock profile data
+            profile_data = self._generate_schema_based_profile(user_id)
+            
+            # Create UserProfile object with the generated data
+            user_profile = UserProfile(
+                user_id=profile_data["user_id"],
+                name=profile_data["name"],
+                email=profile_data["email"],
+                preferences=profile_data["preferences"],
+                interests=profile_data["interests"],
+                age=profile_data["age"],
+                location=profile_data["location"]
+            )
+            
+            self.logger.info("Mock user profile generated successfully", 
+                           user_id=user_id,
+                           service="user_profile",
+                           operation="generate_profile")
+            
+            return user_profile
+            
+        except Exception as e:
+            self.logger.error("Failed to generate schema-based mock user profile", 
+                            user_id=user_id,
+                            error=str(e),
+                            service="user_profile",
+                            operation="generate_profile")
+            log_exception("user_profile_service", e, {"user_id": user_id, "operation": "generate_profile"})
+            return None
 
