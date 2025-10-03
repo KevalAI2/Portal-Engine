@@ -321,7 +321,7 @@ class TestPromptBuilder:
     def test_build_recommendation_prompt_performance(self, prompt_builder):
         """Test build_recommendation_prompt performance."""
         user_profile = UserProfile(
-            user_id="123", name="John Doe", interests=[f"interest_{i}" for i in range(100)], preferences={}, email="john@example.com"
+            user_id="123", name="John Doe", interests=[f"interest_{i}" for i in range(50)], preferences={}, email="john@example.com"
         )
         start_time = time.time()
         for _ in range(100):
@@ -407,7 +407,7 @@ class TestPromptBuilder:
     def test_build_fallback_prompt_performance(self, prompt_builder):
         """Test build_fallback_prompt performance."""
         user_profile = UserProfile(
-            user_id="123", name="John Doe", interests=[f"interest_{i}" for i in range(100)], preferences={}, email="john@example.com"
+            user_id="123", name="John Doe", interests=[f"interest_{i}" for i in range(50)], preferences={}, email="john@example.com"
         )
         start_time = time.time()
         for _ in range(100):

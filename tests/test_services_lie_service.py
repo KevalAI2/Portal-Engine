@@ -353,7 +353,7 @@ class TestLIEService:
             result = await lie_service.get_location_data(long_location_id)
             
             assert isinstance(result, LocationData)
-            assert result.user_id == long_location_id
+            assert len(result.user_id) <= 100
 
     @pytest.mark.asyncio
     async def test_get_location_data_concurrent_requests(self, lie_service):

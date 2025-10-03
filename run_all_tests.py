@@ -98,11 +98,20 @@ def run_unit_tests(verbose=False, parallel=False, coverage=False):
         cmd.append("-v")
     if parallel:
         cmd.extend(["-n", "auto"])
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
         cmd.extend([
-            "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
         ])
-    
+
     cmd.extend(["--tb=short", "--strict-markers", "--disable-warnings"])
     return subprocess.run(cmd, cwd=get_project_root())
 
@@ -119,11 +128,19 @@ def run_integration_tests(verbose=False, parallel=False, coverage=False):
         cmd.append("-v")
     if parallel:
         cmd.extend(["-n", "auto"])
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
         cmd.extend([
-            "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
         ])
-    
     cmd.extend(["--tb=short", "--strict-markers", "--disable-warnings"])
     return subprocess.run(cmd, cwd=get_project_root())
 
@@ -140,11 +157,19 @@ def run_performance_tests(verbose=False, parallel=False, coverage=False):
         cmd.append("-v")
     if parallel:
         cmd.extend(["-n", "auto"])
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
         cmd.extend([
-            "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
         ])
-    
     cmd.extend(["--tb=short", "--strict-markers", "--disable-warnings"])
     return subprocess.run(cmd, cwd=get_project_root())
 
@@ -160,7 +185,19 @@ def run_all_tests(verbose=False, parallel=False, coverage=False):
         cmd.append("-v")
     if parallel:
         cmd.extend(["-n", "auto"])
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
+        cmd.extend([
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
+        ])
         cmd.extend([
             "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
         ])
@@ -178,11 +215,19 @@ def run_specific_test_file(test_file, verbose=False, coverage=False):
     
     if verbose:
         cmd.append("-v")
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
         cmd.extend([
-            "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
         ])
-    
     cmd.extend(["--tb=short", "--strict-markers", "--disable-warnings"])
     return subprocess.run(cmd, cwd=get_project_root())
 
@@ -196,11 +241,19 @@ def run_specific_test_function(test_file, test_function, verbose=False, coverage
     
     if verbose:
         cmd.append("-v")
-    if coverage:
+    # if coverage:
+    #     cmd.extend([
+    #         "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+    #     ])
+    if coverage is not None:
+        modules = coverage if len(coverage) > 0 else ["app"]
+        for module in modules:
+            cmd.append(f"--cov={module}")
         cmd.extend([
-            "--cov=app", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"
+            "--cov-report=html",
+            "--cov-report=term-missing",
+            "--cov-report=xml"
         ])
-    
     cmd.extend(["--tb=short", "--strict-markers", "--disable-warnings"])
     return subprocess.run(cmd, cwd=get_project_root())
 
@@ -293,7 +346,12 @@ def main():
     parser.add_argument("--unit", action="store_true", help="Run only unit tests")
     parser.add_argument("--integration", action="store_true", help="Run only integration tests")
     parser.add_argument("--performance", action="store_true", help="Run only performance tests")
-    parser.add_argument("--coverage", action="store_true", help="Run tests with coverage reporting")
+    # parser.add_argument("--coverage", action="store_true", help="Run tests with coverage reporting")
+    parser.add_argument(
+    "--coverage",
+    nargs="*",
+    help="Run tests with coverage reporting for specified modules (default: app)."
+    )
     parser.add_argument("--verbose", action="store_true", help="Run tests with verbose output")
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
     parser.add_argument("--file", type=str, help="Run a specific test file")
