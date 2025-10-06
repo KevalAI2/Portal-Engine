@@ -327,9 +327,12 @@ class CISService(BaseService):
             # Generate comprehensive mock interaction data
             interaction_data = self._generate_mock_interaction_data(user_id)
             
+            # Truncate user_id to respect validation limits
+            truncated_user_id = interaction_data["user_id"][:100] if len(interaction_data["user_id"]) > 100 else interaction_data["user_id"]
+            
             # Create InteractionData object
             interaction_obj = InteractionData(
-                user_id=interaction_data["user_id"],
+                user_id=truncated_user_id,
                 recent_interactions=interaction_data["recent_interactions"],
                 interaction_history=interaction_data["interaction_history"],
                 preferences=interaction_data["interaction_preferences"],
@@ -356,4 +359,43 @@ class CISService(BaseService):
             log_exception("cis_service", e, {"user_id": user_id, "operation": "generate_interaction_data"})
             return None
     
+    def get_interaction_data_sync(self, user_id: str) -> Optional[InteractionData]:
+        """Synchronous version of get_interaction_data for Celery tasks"""
+        try:
+            self.logger.info("Generating mock interaction data", 
+                           user_id=user_id,
+                           service="cis_service",
+                           operation="generate_interaction_data")
+            
+            # Generate mock interaction data
+            interaction_data = self._generate_mock_interaction_data(user_id)
+            
+            # Create InteractionData object
+            interaction_obj = InteractionData(
+                user_id=interaction_data["user_id"],
+                recent_interactions=interaction_data["recent_interactions"],
+                interaction_history=interaction_data["interaction_history"],
+                preferences=interaction_data["interaction_preferences"],
+                engagement_score=interaction_data["engagement_score"]
+            )
+            
+            self.logger.info("Mock interaction data generated successfully", 
+                           user_id=user_id,
+                           engagement_score=interaction_data.get("engagement_score", 0.0),
+                           data_confidence=interaction_data.get("data_confidence", 0.0),
+                           recent_interactions_count=len(interaction_data.get("recent_interactions", [])),
+                           interaction_history_count=len(interaction_data.get("interaction_history", [])),
+                           service="cis_service",
+                           operation="generate_interaction_data")
+            
+            return interaction_obj
+            
+        except Exception as e:
+            self.logger.error("Failed to generate mock interaction data", 
+                            user_id=user_id, 
+                            error=str(e),
+                            service="cis_service",
+                            operation="generate_interaction_data")
+            log_exception("cis_service", e, {"user_id": user_id, "operation": "generate_interaction_data"})
+            return None
 
