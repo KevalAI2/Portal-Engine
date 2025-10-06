@@ -381,11 +381,13 @@ class TestLLMService:
             assert reason_place.endswith(".")
 
     def test_generate_personalized_reason_with_user(self, llm_service):
-        """Reason generation with user_id appends personalized addition."""
+        """Reason generation with user_id returns longer detailed explanation."""
         with patch('app.services.llm_service.random.choice', side_effect=lambda x: x[0]):
             item = {"genre": "Action"}
             reason = llm_service._generate_personalized_reason(item, "movies", "Likes action", "u1", "BCN")
-            assert ", and " in reason
+            assert isinstance(reason, str)
+            assert len(reason) > 200
+            assert reason.count('.') >= 3
 
     def test_clear_recommendations_all_no_keys(self, llm_service):
         """Clearing all when no keys found should not call delete."""

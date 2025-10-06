@@ -229,9 +229,12 @@ class LIEService(BaseService):
             # Generate comprehensive mock location data
             location_data = self._generate_mock_location_data(user_id)
             
+            # Truncate user_id to respect validation limits
+            truncated_user_id = location_data["user_id"][:100] if len(location_data["user_id"]) > 100 else location_data["user_id"]
+            
             # Create LocationData object
             location_obj = LocationData(
-                user_id=location_data["user_id"],
+                user_id=truncated_user_id,
                 current_location=location_data["current_location"]["city"],
                 home_location=location_data["home_location"]["city"],
                 work_location=location_data["work_location"]["city"],
@@ -259,4 +262,44 @@ class LIEService(BaseService):
             log_exception("lie_service", e, {"user_id": user_id, "operation": "generate_location_data"})
             return None
     
+    def get_location_data_sync(self, user_id: str) -> Optional[LocationData]:
+        """Synchronous version of get_location_data for Celery tasks"""
+        try:
+            self.logger.info("Generating mock location data", 
+                           user_id=user_id,
+                           service="lie_service",
+                           operation="generate_location_data")
+            
+            # Generate mock location data
+            location_data = self._generate_mock_location_data(user_id)
+            
+            # Create LocationData object
+            location_obj = LocationData(
+                user_id=location_data["user_id"],
+                current_location=location_data["current_location"]["city"],
+                home_location=location_data["home_location"]["city"],
+                work_location=location_data["work_location"]["city"],
+                travel_history=location_data["travel_history"],
+                location_preferences=location_data["location_preferences"]
+            )
+            
+            self.logger.info("Mock location data generated successfully", 
+                           user_id=user_id,
+                           data_confidence=location_data.get("data_confidence", 0.0),
+                           current_location=location_data.get("current_location", "Unknown"),
+                           home_location=location_data.get("home_location", "Unknown"),
+                           travel_history_count=len(location_data.get("travel_history", [])),
+                           service="lie_service",
+                           operation="generate_location_data")
+            
+            return location_obj
+            
+        except Exception as e:
+            self.logger.error("Failed to generate mock location data", 
+                            user_id=user_id, 
+                            error=str(e),
+                            service="lie_service",
+                            operation="generate_location_data")
+            log_exception("lie_service", e, {"user_id": user_id, "operation": "generate_location_data"})
+            return None
 

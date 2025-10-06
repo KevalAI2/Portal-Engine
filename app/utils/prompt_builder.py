@@ -351,9 +351,11 @@ INSTRUCTIONS:
 5. For events: Use realistic dates within the next 30 days, local venues, and appropriate pricing
 6. For movies: Include current releases and popular films with accurate ratings and platforms
 7. For music: Include trending and classic tracks with real streaming URLs format
-8. All "why_would_you_like_this" fields must reference specific user profile, location, and interaction data
-9. For all URLs: Use accurate, real URLs based on your knowledge. If unknown, set to null
-10. For social_media: Only include known full URLs. If unknown, set to {{}}
+8. All "why_would_you_like_this" fields must be detailed explanations with 3-5 full sentences
+9. Each explanation should be descriptive, natural, and meaningful (not just keywords)
+10. Reference specific user profile, location, and interaction data in compelling narratives
+11. For all URLs: Use accurate, real URLs based on your knowledge. If unknown, set to null
+12. For social_media: Only include known full URLs. If unknown, set to {{}}
 
 Respond ONLY with the JSON object in this exact format:
 {self._get_complete_json_structure(current_city)}"""
@@ -548,10 +550,13 @@ CONTENT CREATION RULES:
 - For social_media: Only include known full URLs. If unknown, set to {{}}
 
 PERSONALIZATION GUIDELINES:
-- Reference available user data in "why_would_you_like_this" explanations
-- When limited data available, focus on broad appeal factors
-- Be specific: "Perfect for your Barcelona location and interest in cultural experiences"
+- Generate detailed "why_would_you_like_this" explanations with 3-5 full sentences
+- Each explanation should be descriptive, natural, and meaningful (not just keywords)
+- Reference available user data and create compelling, personalized narratives
+- When limited data available, focus on broad appeal factors with rich detail
+- Be specific and engaging: "Perfect for your Barcelona location and interest in cultural experiences"
 - Avoid generic phrases: "You might enjoy this" → "Given your [specific trait]..."
+- Create explanations that tell a story about why this recommendation fits the user
 
 Respond ONLY with the JSON object in this exact format."""
         
