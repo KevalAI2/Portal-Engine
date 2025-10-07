@@ -83,8 +83,8 @@ def main():
 
     # --- Start RabbitMQ ---
     print("📡 Starting RabbitMQ on port 5672...")
-    RABBITMQ_SBIN = "/opt/homebrew/opt/rabbitmq/sbin"  # Adjust if your RabbitMQ path differs
-    #RABBITMQ_SBIN = "/usr/local/opt/rabbitmq/sbin"
+    # RABBITMQ_SBIN = "/opt/homebrew/opt/rabbitmq/sbin"  # Adjust if your RabbitMQ path differs
+    RABBITMQ_SBIN = "/usr/local/opt/rabbitmq/sbin"
     rabbitmq_server = os.path.join(RABBITMQ_SBIN, "rabbitmq-server")
     rabbitmq_ctl = os.path.join(RABBITMQ_SBIN, "rabbitmqctl")
 
@@ -106,7 +106,7 @@ def main():
         "celery -A app.workers.celery_app worker "  # Changed from workers.celery_app to app.workers.celery_app
         "--loglevel=info "
         "--concurrency=4 "
-        "--queues=user_processing_alt "
+        "--queues=user_processing,user_processing_alt "
         "--hostname=worker_alt@%h "
         "--prefetch-multiplier=1 "
         "--without-gossip "

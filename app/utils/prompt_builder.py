@@ -551,6 +551,7 @@ CONTENT CREATION RULES:
 
 PERSONALIZATION GUIDELINES:
 - Generate detailed "why_would_you_like_this" explanations with 3-5 full sentences
+- Generate the "description" field with 3-5 full sentences that summarize the item naturally
 - Each explanation should be descriptive, natural, and meaningful (not just keywords)
 - Reference available user data and create compelling, personalized narratives
 - When limited data available, focus on broad appeal factors with rich detail
