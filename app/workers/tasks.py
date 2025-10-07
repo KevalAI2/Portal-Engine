@@ -247,7 +247,7 @@ def async_call_llm(self, prompt: str, user_context: Dict[str, Any], recommendati
             logger.info("Starting LLM call", recommendation_type=recommendation_type, task_id=task_id)
             
             # Call LLM service synchronously
-            recommendations = llm_service.generate_recommendations(
+            recommendations = llm_service.generate_recommendations_sync(
                 prompt=prompt,
                 user_id=user_context.get("user_id", "unknown")
             )
@@ -572,6 +572,59 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
             # Cache the comprehensive data
             cache_service.set("comprehensive_data", user_id, comprehensive_data)
             
+            # Build a prompt from available data and generate recommendations, then persist to Redis
+            try:
+                pb = PromptBuilder()
+                from app.core.constants import RecommendationType
+                rec_type = RecommendationType.PLACE
+                # Use build_recommendation_prompt when we have at least one data source; else fallback
+                if any([comprehensive_data.get("user_profile"), comprehensive_data.get("location_data"), comprehensive_data.get("interaction_data")]):
+                    prompt = pb.build_recommendation_prompt(
+                        user_profile=comprehensive_data.get("user_profile"),
+                        location_data=comprehensive_data.get("location_data"),
+                        interaction_data=comprehensive_data.get("interaction_data"),
+                        recommendation_type=rec_type,
+                        max_results=5
+                    )
+                else:
+                    prompt = pb.build_fallback_prompt(
+                        user_profile=comprehensive_data.get("user_profile"),
+                        location_data=comprehensive_data.get("location_data"),
+                        interaction_data=comprehensive_data.get("interaction_data"),
+                        recommendation_type=rec_type,
+                        max_results=5
+                    )
+                current_city = (comprehensive_data.get("location_data") or {}).get("current_location") or "Barcelona"
+                
+                # Extract location context and date range for LLM
+                location_context = None
+                date_range = None
+                
+                if comprehensive_data.get("location_data"):
+                    location_data = comprehensive_data["location_data"]
+                    location_context = {
+                        "lat": location_data.get("current_lat"),
+                        "lng": location_data.get("current_lng"),
+                        "city": location_data.get("current_location"),
+                        "country": location_data.get("current_country"),
+                        "timezone": location_data.get("timezone")
+                    }
+                
+                # Execute LLM generation in this sync task
+                llm_response = llm_service.generate_recommendations_sync(
+                    prompt=prompt, 
+                    user_id=user_id, 
+                    current_city=current_city,
+                    location_context=location_context,
+                    date_range=date_range
+                )
+                if isinstance(llm_response, dict) and llm_response.get("success"):
+                    llm_service._store_in_redis(user_id, llm_response)
+                else:
+                    logger.warning("LLM generation did not return success", user_id=user_id)
+            except Exception as e:
+                logger.warning("Post-process recommendation generation failed", user_id=user_id, error=str(e))
+            
             log_background_task("process_user_comprehensive", task_id, "completed", user_id=user_id)
             logger.info("Comprehensive user processing completed", user_id=user_id, task_id=task_id)
             
@@ -579,7 +632,6 @@ def process_user_comprehensive(self, user_id: str) -> Dict[str, Any]:
                 "success": True,
                 "user_id": user_id,
                 "comprehensive_data": comprehensive_data,
-                "generated_prompt": "Test prompt",  # Mock prompt for testing
                 "message": "User processed comprehensively"
             }
             
@@ -747,7 +799,6 @@ def process_user(user_id: str) -> Dict[str, Any]:
 
 def get_users(count: int = 5, delay: int = 0) -> Dict[str, Any]:
     """Get list of user IDs (mock implementation for tests)"""
-    import time
     if delay > 0:
         time.sleep(delay)
     users = [f"user{i+1}" for i in range(count)]

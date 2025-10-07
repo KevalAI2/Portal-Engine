@@ -427,10 +427,13 @@ async def generate_recommendations_endpoint(
         start_ts = time.time()
         
         prompt = request.prompt
+        loc = request.location.model_dump() if getattr(request, 'location', None) else None
+        date_range = request.date_range.model_dump() if getattr(request, 'date_range', None) else None
         builder = PromptBuilder()
         if prompt is not None:
             # Wrap custom prompt to maintain strict JSON structure
-            prompt = builder.build_custom_prompt(prompt, current_city="Barcelona", max_results=5)
+            current_city = (loc.get("city") if loc and loc.get("city") else "Barcelona")
+            prompt = builder.build_custom_prompt(prompt, current_city=current_city, max_results=5)
         else:
             # Build the original prompt using live data; if any data missing, create minimal stand-ins
             user_service = get_optional_user_profile_service()
@@ -496,7 +499,13 @@ async def generate_recommendations_endpoint(
             attempts += 1
             try:
                 response = await asyncio.wait_for(
-                    llm_service.generate_recommendations(prompt, user_id),
+                    llm_service.generate_recommendations(
+                        prompt,
+                        user_id,
+                        current_city=(loc.get("city") if loc else "Barcelona"),
+                        location_context=loc,
+                        date_range=date_range,
+                    ),
                     timeout=per_attempt_timeout
                 )
                 if response and response.get("success"):
