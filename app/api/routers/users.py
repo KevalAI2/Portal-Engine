@@ -2,6 +2,11 @@
 Users API router
 """
 from typing import List, Optional
+import asyncio
+import time
+import uuid
+import json
+import random
 from fastapi import APIRouter, HTTPException, Query, Depends, Path
 from fastapi.responses import Response
 from app.core.logging import get_logger, log_exception, log_api_call, log_api_response
@@ -418,6 +423,8 @@ async def generate_recommendations_endpoint(
     """Generate recommendations using LLM service"""
     try:
         logger.info(f"Generating recommendations for user {user_id}")
+        request_id = str(uuid.uuid4())
+        start_ts = time.time()
         
         prompt = request.prompt
         builder = PromptBuilder()
@@ -479,19 +486,80 @@ async def generate_recommendations_endpoint(
                     max_results=5,
                 )
         logger.info("Generated prompt for user", user_id=user_id, prompt_length=len(prompt) if prompt else 0)
-        response = await llm_service.generate_recommendations(prompt, user_id)
-        
-        if response.get("success", False):
-            return APIResponse.success_response(
-                data=response,
-                message="Recommendations generated successfully"
-            )
-        else:
-            return APIResponse.error_response(
-                message="Failed to generate recommendations",
-                data=response,
-                status_code=500
-            )
+        # Reliable execution: retries with per-attempt timeout + jitter, then cached fallback
+        attempts = 0
+        max_retries = 2  # total attempts = max_retries + 1
+        per_attempt_timeout = 20  # seconds
+        last_error = None
+        response = None
+        while attempts <= max_retries:
+            attempts += 1
+            try:
+                response = await asyncio.wait_for(
+                    llm_service.generate_recommendations(prompt, user_id),
+                    timeout=per_attempt_timeout
+                )
+                if response and response.get("success"):
+                    # Attach reliability metadata
+                    response.setdefault("metadata", {})
+                    response["metadata"].update({
+                        "request_id": request_id,
+                        "attempts": attempts,
+                        "from_cache": False,
+                        "elapsed_ms": int((time.time() - start_ts) * 1000),
+                    })
+                    return APIResponse.success_response(
+                        data=response,
+                        message="Recommendations generated successfully"
+                    )
+                # If call returned but not successful, raise to trigger retry/fallback
+                last_error = RuntimeError(response.get("error", "unknown_error")) if isinstance(response, dict) else RuntimeError("unsuccessful_response")
+                raise last_error
+            except asyncio.TimeoutError as e:
+                last_error = e
+                logger.warning("LLM recommendations timed out, retrying if possible", user_id=user_id, attempt=attempts, request_id=request_id)
+            except Exception as e:
+                last_error = e
+                logger.warning("LLM recommendations attempt failed", user_id=user_id, attempt=attempts, request_id=request_id, error=str(e))
+            # Backoff with jitter before next attempt (if any)
+            if attempts <= max_retries:
+                backoff = min(1.0 * attempts, 2.0)  # capped linear backoff
+                jitter = random.random() * 0.25
+                await asyncio.sleep(backoff + jitter)
+
+        # Fallback: try to serve last cached/stale recommendations
+        try:
+            cache_key = f"recommendations:{user_id}"
+            cached_payload = llm_service.redis_client.get(cache_key)
+            if cached_payload:
+                cached = json.loads(cached_payload)
+                if isinstance(cached, dict):
+                    cached.setdefault("metadata", {})
+                    cached["metadata"].update({
+                        "request_id": request_id,
+                        "attempts": attempts,
+                        "from_cache": True,
+                        "elapsed_ms": int((time.time() - start_ts) * 1000),
+                    })
+                    return APIResponse.success_response(
+                        data=cached,
+                        message="Returning cached recommendations due to upstream timeout"
+                    )
+        except Exception as cache_err:
+            logger.warning("Cached fallback failed", user_id=user_id, request_id=request_id, error=str(cache_err))
+
+        # If all failed, return error with context
+        err_msg = str(last_error) if last_error else "recommendation_generation_failed"
+        return APIResponse.error_response(
+            message="Failed to generate recommendations",
+            data={
+                "request_id": request_id,
+                "attempts": attempts,
+                "elapsed_ms": int((time.time() - start_ts) * 1000),
+                "error": err_msg,
+            },
+            status_code=504 if isinstance(last_error, asyncio.TimeoutError) else 500
+        )
         
     except Exception as e:
         logger.error(f"Error generating recommendations: {str(e)}")
