@@ -92,7 +92,6 @@ class ResultsService:
                 "applied_filters": filters or {},
                 "processing_info": {
                     "raw_count": sum(len(cat) for cat in recommendations.values()),
-                    # "ranked_count": sum(len(cat) for cat in ranked_results.values()),
                     "final_count": sum(len(cat) for cat in filtered_results.values())
                 }
             }
