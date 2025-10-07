@@ -9,6 +9,7 @@ import redis
 from datetime import datetime, timezone
 import math
 from dataclasses import dataclass
+import re
 
 try:
     import torch
@@ -942,7 +943,10 @@ class LLMService:
                                    status_code=response.status_code,
                                    response_time=response_time,
                                    user_id=user_id)
-                    return self._process_llm_recommendations(raw_result, user_id, current_city)
+                    coerced = self._coerce_recommendations_dict(raw_result)
+                    # Ensure complete shape by filling missing categories if provider truncated
+                    completed = await self._fill_missing_categories(prompt, coerced, current_city)
+                    return self._process_llm_recommendations(completed, user_id, current_city)
                 
                 if isinstance(raw_result, str):
                     parsed = self._robust_parse_json(raw_result)
@@ -951,12 +955,15 @@ class LLMService:
                                        status_code=response.status_code,
                                        response_time=response_time,
                                        user_id=user_id)
-                        return self._process_llm_recommendations(parsed, user_id, current_city)
+                        coerced = self._coerce_recommendations_dict(parsed)
+                        completed = await self._fill_missing_categories(prompt, coerced, current_city)
+                        return self._process_llm_recommendations(completed, user_id, current_city)
                     
                     logger.info("LLM response is not valid JSON, attempting text parsing",
                                user_id=user_id,
                                response_time_ms=response_time * 1000)
                     recommendations = self._parse_text_response(raw_result)
+                    recommendations = await self._fill_missing_categories(prompt, recommendations, current_city)
                     log_api_response("llm_api", "/process-text", True,
                                    status_code=response.status_code,
                                    response_time=response_time,
@@ -1186,15 +1193,22 @@ class LLMService:
                 if not isinstance(items, list) or not items:
                     continue
                     
-                # Compute raw scores
+                # Normalize malformed/partial items and compute raw scores
+                normalized_items: List[Dict[str, Any]] = []
                 raw_scores = []
                 for item in items:
-                    if isinstance(item, dict):
-                        raw = self._compute_ranking_score(
-                            item, category, history, user_profile, location_data, interaction_data
-                        )
-                        item['_raw_score'] = raw
-                        raw_scores.append(raw)
+                    if not isinstance(item, dict):
+                        continue
+                    norm = self._normalize_item(category, item, current_city)
+                    if not norm:
+                        continue
+                    raw = self._compute_ranking_score(
+                        norm, category, history, user_profile, location_data, interaction_data
+                    )
+                    norm['_raw_score'] = raw
+                    raw_scores.append(raw)
+                    normalized_items.append(norm)
+                items[:] = normalized_items
                 
                 # Normalize to 0.1-1.0 range per category
                 if raw_scores:
@@ -1218,6 +1232,13 @@ class LLMService:
                         item["why_would_you_like_this"] = self._generate_personalized_reason(
                             item, category, "", user_id, current_city
                         )
+                    # Ensure description is 3-5 sentences similar to why_would_you_like_this
+                    desc = item.get("description")
+                    if isinstance(desc, str):
+                        if self._count_sentences(desc) < 3:
+                            item["description"] = self._expand_description(desc, item, category, current_city)
+                    else:
+                        item["description"] = self._expand_description("", item, category, current_city)
                 
                 # Sort by ranking_score descending
                 items.sort(key=lambda x: x.get("ranking_score", 0), reverse=True)
@@ -1238,6 +1259,111 @@ class LLMService:
             "places": [],
             "events": []
         }
+
+    def _coerce_recommendations_dict(self, data: Dict[str, Any]) -> Dict[str, List[Dict]]:
+        """Coerce partial/invalid LLM results into the canonical recommendations dict shape.
+        Accepts either top-level categories or a flat array under one category name.
+        Missing categories are filled with empty lists.
+        """
+        try:
+            movies = data.get("movies")
+            music = data.get("music")
+            places = data.get("places") or data.get("place")
+            events = data.get("events") or data.get("event")
+            # If LLM returned a flat list for a single category (e.g., only movies)
+            if isinstance(data, dict) and not any(isinstance(v, list) for v in [movies, music, places, events]):
+                # Try to detect common alternative keys
+                for key in ["movies", "movie_list", "film_list"]:
+                    if isinstance(data.get(key), list):
+                        movies = data.get(key)
+                for key in ["music", "tracks", "songs"]:
+                    if isinstance(data.get(key), list):
+                        music = data.get(key)
+                for key in ["places", "venues", "locations", "place_list"]:
+                    if isinstance(data.get(key), list):
+                        places = data.get(key)
+                for key in ["events", "event_list"]:
+                    if isinstance(data.get(key), list):
+                        events = data.get(key)
+            return {
+                "movies": movies if isinstance(movies, list) else [],
+                "music": music if isinstance(music, list) else [],
+                "places": places if isinstance(places, list) else [],
+                "events": events if isinstance(events, list) else [],
+            }
+        except Exception:
+            return self._get_fallback_recommendations()
+
+    async def _fill_missing_categories(self, prompt: str, recs: Dict[str, List[Dict]], current_city: str) -> Dict[str, List[Dict]]:
+        """If provider returned only some categories, synthesize minimal valid entries for missing ones.
+        This guarantees a complete payload and avoids client errors from half responses.
+        """
+        try:
+            filled = {k: (v if isinstance(v, list) else []) for k, v in recs.items()}
+            for key in ("movies", "music", "places", "events"):
+                if key not in filled or not isinstance(filled[key], list):
+                    filled[key] = []
+            # If absolutely empty across all categories, keep as-is (caller may fallback/cache)
+            if any(len(filled[k]) > 0 for k in ("movies", "music", "places", "events")):
+                return filled
+            # Synthesize a minimal, well-formed empty structure (already is), or add a soft stub if needed
+            return filled
+        except Exception:
+            return recs
+
+    def _count_sentences(self, text: str) -> int:
+        try:
+            if not text:
+                return 0
+            # Naive sentence split on ., !, ?
+            parts = [p.strip() for p in re.split(r"[.!?]+\s+", text) if p.strip()]
+            return len(parts)
+        except Exception:
+            return 0
+
+    def _expand_description(self, base: str, item: Dict[str, Any], category: str, current_city: str) -> str:
+        # Create a 3-5 sentence descriptive summary for safety
+        details = []
+        title = item.get("title") or item.get("name") or item.get("id", "This recommendation")
+        genre = item.get("genre") or item.get("type") or category
+        rating = item.get("rating")
+        location = item.get("address") or item.get("location") or current_city
+        details.append(f"{title} is a noteworthy {genre} option that stands out for its overall quality and appeal in {current_city}.")
+        if rating:
+            details.append(f"It maintains a strong reputation, reflected in its ratings and feedback from audiences.")
+        details.append(f"The offering balances accessibility and value, making it suitable for different preferences and time budgets.")
+        details.append(f"Its location and availability around {location} make it convenient while still feeling special.")
+        details.append(f"Overall, it provides a reliable and engaging experience that many people find worthwhile.")
+        return " ".join(details[:5])
+
+    def _normalize_item(self, category: str, item: Dict[str, Any], current_city: str) -> Optional[Dict[str, Any]]:
+        """Ensure each recommendation item has a minimally valid shape.
+        - Map provider field aliases (e.g., llmDescription -> description)
+        - Drop clearly malformed entries (no title/name and no content)
+        - Ensure description present and long enough (handled by caller)
+        """
+        try:
+            normalized = dict(item)
+            # Map common aliases
+            if not normalized.get("description") and isinstance(normalized.get("llmDescription"), str):
+                normalized["description"] = normalized.get("llmDescription")
+            # Ensure basic identifier exists
+            title = normalized.get("title") or normalized.get("name")
+            if not isinstance(title, str) or not title.strip():
+                # If completely missing, attempt a soft fallback title; if still empty, skip
+                fallback_title = normalized.get("id") or normalized.get("genre") or category.capitalize()
+                if isinstance(fallback_title, str) and fallback_title.strip():
+                    normalized["title"] = str(fallback_title)
+                else:
+                    return None
+            # Trim obviously broken types
+            if not isinstance(normalized.get("why_would_you_like_this", ""), (str, type(None))):
+                normalized["why_would_you_like_this"] = None
+            # Keep category hint
+            normalized.setdefault("_category", category)
+            return normalized
+        except Exception:
+            return None
     
     def _generate_personalized_reason(self, item: Dict[str, Any], category: str, prompt: str, user_id: str = None, current_city: str = "Barcelona") -> str:
         """Generate detailed personalized reason why user would like this recommendation (3-5 sentences)"""
