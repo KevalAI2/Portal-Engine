@@ -9,7 +9,9 @@ from app.models.requests import (
     ProcessingRequest,
     RefreshRequest,
     ResultsFilterRequest,
-    TaskStatusRequest
+    TaskStatusRequest,
+    LocationPayload,
+    DateRangePayload
 )
 
 
@@ -51,7 +53,64 @@ class TestRecommendationRequest:
         """Test that json_schema_extra is properly configured"""
         schema = RecommendationRequest.model_json_schema()
         assert "example" in schema
-        assert schema["example"] == {"prompt": "I like concerts"}
+        assert "prompt" in schema["example"]
+        assert "location" in schema["example"]
+        assert "date_range" in schema["example"]
+    
+    def test_recommendation_request_with_location(self):
+        """Test RecommendationRequest with location payload"""
+        location = LocationPayload(lat=41.3851, lng=2.1734, city="Barcelona")
+        request = RecommendationRequest(
+            prompt="I like concerts",
+            location=location
+        )
+        assert request.prompt == "I like concerts"
+        assert request.location.lat == 41.3851
+        assert request.location.lng == 2.1734
+        assert request.location.city == "Barcelona"
+        assert request.date_range is None
+    
+    def test_recommendation_request_with_date_range(self):
+        """Test RecommendationRequest with date range payload"""
+        date_range = DateRangePayload(
+            start="2024-01-01T00:00:00Z",
+            end="2024-12-31T23:59:59Z"
+        )
+        request = RecommendationRequest(
+            prompt="I like concerts",
+            date_range=date_range
+        )
+        assert request.prompt == "I like concerts"
+        assert request.date_range.start == "2024-01-01T00:00:00Z"
+        assert request.date_range.end == "2024-12-31T23:59:59Z"
+        assert request.location is None
+    
+    def test_recommendation_request_with_all_fields(self):
+        """Test RecommendationRequest with all fields"""
+        location = LocationPayload(lat=41.3851, lng=2.1734, city="Barcelona")
+        date_range = DateRangePayload(
+            start="2024-01-01T00:00:00Z",
+            end="2024-12-31T23:59:59Z"
+        )
+        request = RecommendationRequest(
+            prompt="I like concerts",
+            location=location,
+            date_range=date_range
+        )
+        assert request.prompt == "I like concerts"
+        assert request.location.lat == 41.3851
+        assert request.date_range.start == "2024-01-01T00:00:00Z"
+    
+    def test_recommendation_request_empty_fields(self):
+        """Test RecommendationRequest with all fields as None"""
+        request = RecommendationRequest(
+            prompt=None,
+            location=None,
+            date_range=None
+        )
+        assert request.prompt is None
+        assert request.location is None
+        assert request.date_range is None
 
 
 class TestUserProfileRequest:
@@ -314,3 +373,150 @@ class TestTaskStatusRequest:
         """Test task ID exceeding maximum length raises ValidationError"""
         with pytest.raises(ValidationError):
             TaskStatusRequest(task_id="a" * 101)  # Exceeds max length of 100
+
+
+class TestLocationPayload:
+    """Test cases for LocationPayload model"""
+    
+    def test_valid_location_payload(self):
+        """Test valid location payload with all fields"""
+        payload = LocationPayload(
+            lat=41.3851,
+            lng=2.1734,
+            city="Barcelona",
+            country="Spain",
+            timezone="Europe/Madrid"
+        )
+        assert payload.lat == 41.3851
+        assert payload.lng == 2.1734
+        assert payload.city == "Barcelona"
+        assert payload.country == "Spain"
+        assert payload.timezone == "Europe/Madrid"
+    
+    def test_location_payload_minimal(self):
+        """Test location payload with only required fields"""
+        payload = LocationPayload(lat=0.0, lng=0.0)
+        assert payload.lat == 0.0
+        assert payload.lng == 0.0
+        assert payload.city is None
+        assert payload.country is None
+        assert payload.timezone is None
+    
+    def test_location_payload_lat_out_of_range_high(self):
+        """Test latitude exceeding maximum value raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(lat=91.0, lng=0.0)
+    
+    def test_location_payload_lat_out_of_range_low(self):
+        """Test latitude below minimum value raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(lat=-91.0, lng=0.0)
+    
+    def test_location_payload_lng_out_of_range_high(self):
+        """Test longitude exceeding maximum value raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(lat=0.0, lng=181.0)
+    
+    def test_location_payload_lng_out_of_range_low(self):
+        """Test longitude below minimum value raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(lat=0.0, lng=-181.0)
+    
+    def test_location_payload_city_too_long(self):
+        """Test city name exceeding maximum length raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(
+                lat=0.0, 
+                lng=0.0, 
+                city="a" * 121  # Exceeds max length of 120
+            )
+    
+    def test_location_payload_country_too_long(self):
+        """Test country name exceeding maximum length raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(
+                lat=0.0, 
+                lng=0.0, 
+                country="a" * 121  # Exceeds max length of 120
+            )
+    
+    def test_location_payload_timezone_too_long(self):
+        """Test timezone exceeding maximum length raises ValidationError"""
+        with pytest.raises(ValidationError):
+            LocationPayload(
+                lat=0.0, 
+                lng=0.0, 
+                timezone="a" * 65  # Exceeds max length of 64
+            )
+
+
+class TestDateRangePayload:
+    """Test cases for DateRangePayload model"""
+    
+    def test_valid_date_range_payload(self):
+        """Test valid date range payload with ISO8601 dates"""
+        payload = DateRangePayload(
+            start="2024-01-01T00:00:00Z",
+            end="2024-12-31T23:59:59Z"
+        )
+        assert payload.start == "2024-01-01T00:00:00Z"
+        assert payload.end == "2024-12-31T23:59:59Z"
+    
+    def test_date_range_payload_date_only(self):
+        """Test date range payload with date-only ISO8601 format"""
+        payload = DateRangePayload(
+            start="2024-01-01",
+            end="2024-12-31"
+        )
+        assert payload.start == "2024-01-01"
+        assert payload.end == "2024-12-31"
+    
+    def test_date_range_payload_with_timezone(self):
+        """Test date range payload with timezone information"""
+        payload = DateRangePayload(
+            start="2024-01-01T00:00:00+01:00",
+            end="2024-12-31T23:59:59+01:00"
+        )
+        assert payload.start == "2024-01-01T00:00:00+01:00"
+        assert payload.end == "2024-12-31T23:59:59+01:00"
+    
+    def test_date_range_payload_none_values(self):
+        """Test date range payload with None values"""
+        payload = DateRangePayload(start=None, end=None)
+        assert payload.start is None
+        assert payload.end is None
+    
+    def test_date_range_payload_partial_values(self):
+        """Test date range payload with only start or end"""
+        payload_start = DateRangePayload(start="2024-01-01", end=None)
+        assert payload_start.start == "2024-01-01"
+        assert payload_start.end is None
+        
+        payload_end = DateRangePayload(start=None, end="2024-12-31")
+        assert payload_end.start is None
+        assert payload_end.end == "2024-12-31"
+    
+    def test_date_range_payload_invalid_start_format(self):
+        """Test invalid start date format raises ValidationError"""
+        with pytest.raises(ValidationError):
+            DateRangePayload(start="2024-01-01T00:00:00", end="2024-12-31T23:59:59Z")
+    
+    def test_date_range_payload_invalid_end_format(self):
+        """Test invalid end date format raises ValidationError"""
+        with pytest.raises(ValidationError):
+            DateRangePayload(start="2024-01-01T00:00:00Z", end="2024-12-31T23:59:59")
+    
+    def test_date_range_payload_invalid_date_string(self):
+        """Test invalid date string raises ValidationError"""
+        with pytest.raises(ValidationError):
+            DateRangePayload(start="not-a-date", end="2024-12-31T23:59:59Z")
+    
+    def test_date_range_payload_invalid_datetime_string(self):
+        """Test invalid datetime string raises ValidationError"""
+        with pytest.raises(ValidationError):
+            DateRangePayload(start="2024-01-01T25:00:00Z", end="2024-12-31T23:59:59Z")
+    
+    def test_date_range_payload_empty_string(self):
+        """Test empty string raises ValidationError"""
+        with pytest.raises(ValidationError):
+            DateRangePayload(start="", end="2024-12-31T23:59:59Z")

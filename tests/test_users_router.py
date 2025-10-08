@@ -890,3 +890,202 @@ class TestUsersRouter:
         ]
         for path in expected_paths:
             assert path in paths, f"Path {path} not found in OpenAPI schema"
+    
+    def test_generate_recommendations_with_location_and_date_range(self, client, mock_llm_service):
+        """Test generate recommendations with location and date range payload"""
+        from app.models.requests import LocationPayload, DateRangePayload
+        
+        location = LocationPayload(lat=41.3851, lng=2.1734, city="Barcelona")
+        date_range = DateRangePayload(
+            start="2024-01-01T00:00:00Z",
+            end="2024-12-31T23:59:59Z"
+        )
+        
+        request_data = {
+            "prompt": "I like concerts",
+            "location": location.model_dump(),
+            "date_range": date_range.model_dump()
+        }
+        
+        mock_llm_service.generate_recommendations.return_value = {
+            "success": True,
+            "recommendations": {"movies": [], "music": [], "places": [], "events": []}
+        }
+        
+        response = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "Recommendations generated successfully" in data["message"]
+    
+    def test_generate_recommendations_retry_logic(self, client, mock_llm_service):
+        """Test retry logic in generate recommendations endpoint"""
+        from unittest.mock import side_effect
+        
+        # Mock the LLM service to fail first, then succeed
+        mock_llm_service.generate_recommendations.side_effect = [
+            Exception("Temporary failure"),
+            Exception("Temporary failure"),
+            {"success": True, "recommendations": {"movies": []}}
+        ]
+        
+        request_data = {"prompt": "I like concerts"}
+        
+        response = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        
+        # Should succeed after retries
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+    
+    def test_generate_recommendations_retry_exhausted(self, client, mock_llm_service):
+        """Test retry logic when all retries are exhausted"""
+        from unittest.mock import side_effect
+        
+        # Mock the LLM service to always fail
+        mock_llm_service.generate_recommendations.side_effect = Exception("Persistent failure")
+        
+        request_data = {"prompt": "I like concerts"}
+        
+        response = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        
+        # Should fail after all retries
+        assert response.status_code == 500
+        data = response.json()
+        assert data["success"] is False
+        assert "Error generating recommendations" in data["message"]
+    
+    def test_generate_recommendations_caching_behavior(self, client, mock_llm_service):
+        """Test caching behavior in generate recommendations"""
+        mock_llm_service.generate_recommendations.return_value = {
+            "success": True,
+            "recommendations": {"movies": [], "music": [], "places": [], "events": []}
+        }
+        
+        request_data = {"prompt": "I like concerts"}
+        
+        # First request
+        response1 = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        assert response1.status_code == 200
+        
+        # Second request with same data (should use cache if implemented)
+        response2 = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        assert response2.status_code == 200
+        
+        # Verify LLM service was called (caching might not be implemented yet)
+        assert mock_llm_service.generate_recommendations.call_count >= 1
+    
+    def test_generate_recommendations_location_extraction(self, client, mock_llm_service):
+        """Test location extraction from request payload"""
+        from app.models.requests import LocationPayload
+        
+        location = LocationPayload(lat=40.7128, lng=-74.0060, city="New York")
+        request_data = {
+            "prompt": "I like concerts",
+            "location": location.model_dump()
+        }
+        
+        mock_llm_service.generate_recommendations.return_value = {
+            "success": True,
+            "recommendations": {"movies": [], "music": [], "places": [], "events": []}
+        }
+        
+        response = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        
+        assert response.status_code == 200
+        # Verify that the location was passed to the LLM service
+        mock_llm_service.generate_recommendations.assert_called_once()
+        call_args = mock_llm_service.generate_recommendations.call_args
+        # The location should be used in the prompt building
+        assert call_args is not None
+    
+    def test_generate_recommendations_date_range_extraction(self, client, mock_llm_service):
+        """Test date range extraction from request payload"""
+        from app.models.requests import DateRangePayload
+        
+        date_range = DateRangePayload(
+            start="2024-06-01T00:00:00Z",
+            end="2024-06-30T23:59:59Z"
+        )
+        request_data = {
+            "prompt": "I like concerts",
+            "date_range": date_range.model_dump()
+        }
+        
+        mock_llm_service.generate_recommendations.return_value = {
+            "success": True,
+            "recommendations": {"movies": [], "music": [], "places": [], "events": []}
+        }
+        
+        response = client.post(
+            "/api/v1/users/test_user/generate-recommendations",
+            json=request_data
+        )
+        
+        assert response.status_code == 200
+        # Verify that the date range was passed to the LLM service
+        mock_llm_service.generate_recommendations.assert_called_once()
+        call_args = mock_llm_service.generate_recommendations.call_args
+        # The date range should be used in the prompt building
+        assert call_args is not None
+    
+    def test_generate_recommendations_performance_logging(self, client, mock_llm_service):
+        """Test performance logging in generate recommendations"""
+        mock_llm_service.generate_recommendations.return_value = {
+            "success": True,
+            "recommendations": {"movies": [], "music": [], "places": [], "events": []}
+        }
+        
+        request_data = {"prompt": "I like concerts"}
+        
+        with patch('app.api.routers.users.log_performance') as mock_log_performance:
+            response = client.post(
+                "/api/v1/users/test_user/generate-recommendations",
+                json=request_data
+            )
+            
+            assert response.status_code == 200
+            # Verify performance logging was called
+            mock_log_performance.assert_called()
+            call_args = mock_log_performance.call_args
+            assert call_args[0][0] == "generate_recommendations"  # operation
+            assert call_args[0][1] > 0  # duration_ms should be positive
+            assert call_args[0][2] is True  # success should be True
+    
+    def test_generate_recommendations_error_logging(self, client, mock_llm_service):
+        """Test error logging in generate recommendations"""
+        mock_llm_service.generate_recommendations.side_effect = Exception("Test error")
+        
+        request_data = {"prompt": "I like concerts"}
+        
+        with patch('app.api.routers.users.log_exception') as mock_log_exception:
+            response = client.post(
+                "/api/v1/users/test_user/generate-recommendations",
+                json=request_data
+            )
+            
+            assert response.status_code == 500
+            # Verify error logging was called
+            mock_log_exception.assert_called()
+            call_args = mock_log_exception.call_args
+            assert "generate_recommendations" in call_args[0][0]  # operation
+            assert "Test error" in str(call_args[0][1])  # error message

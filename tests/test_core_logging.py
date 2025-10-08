@@ -536,3 +536,184 @@ class TestCoreLogging:
         
         # Should complete within reasonable time (less than 5 seconds for 1000 messages)
         assert (end_time - start_time) < 5.0
+    
+    def test_log_performance_function_exists(self):
+        """Test that log_performance function exists"""
+        from app.core.logging import log_performance
+        assert callable(log_performance)
+    
+    def test_log_api_call_function_exists(self):
+        """Test that log_api_call function exists"""
+        from app.core.logging import log_api_call
+        assert callable(log_api_call)
+    
+    def test_log_security_event_function_exists(self):
+        """Test that log_security_event function exists"""
+        from app.core.logging import log_security_event
+        assert callable(log_security_event)
+    
+    def test_log_business_event_function_exists(self):
+        """Test that log_business_event function exists"""
+        from app.core.logging import log_business_event
+        assert callable(log_business_event)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_performance_success(self, mock_get_logger):
+        """Test log_performance with success case"""
+        from app.core.logging import log_performance
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_performance("test_operation", 150.5, success=True, additional_data={"key": "value"})
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "test_operation" in str(call_args)
+        assert "150.5" in str(call_args)
+        assert "key" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_performance_failure(self, mock_get_logger):
+        """Test log_performance with failure case"""
+        from app.core.logging import log_performance
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_performance("test_operation", 200.0, success=False)
+        
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert "test_operation" in str(call_args)
+        assert "200.0" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_api_call_success(self, mock_get_logger):
+        """Test log_api_call with success case"""
+        from app.core.logging import log_api_call
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_api_call("POST", "/api/test", 200, 150.5, user_id="user123", correlation_id="corr456")
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "POST" in str(call_args)
+        assert "/api/test" in str(call_args)
+        assert "200" in str(call_args)
+        assert "user123" in str(call_args)
+        assert "corr456" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_api_call_error(self, mock_get_logger):
+        """Test log_api_call with error case"""
+        from app.core.logging import log_api_call
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_api_call("POST", "/api/test", 500, 200.0, user_id="user123")
+        
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args
+        assert "POST" in str(call_args)
+        assert "/api/test" in str(call_args)
+        assert "500" in str(call_args)
+        assert "user123" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_security_event(self, mock_get_logger):
+        """Test log_security_event function"""
+        from app.core.logging import log_security_event
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_security_event("login_attempt", "user123", {"ip": "192.168.1.1", "success": False})
+        
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert "login_attempt" in str(call_args)
+        assert "user123" in str(call_args)
+        assert "192.168.1.1" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_business_event(self, mock_get_logger):
+        """Test log_business_event function"""
+        from app.core.logging import log_business_event
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_business_event("purchase", "user123", {"amount": 99.99, "product": "premium"})
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "purchase" in str(call_args)
+        assert "user123" in str(call_args)
+        assert "99.99" in str(call_args)
+        assert "premium" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_performance_minimal_data(self, mock_get_logger):
+        """Test log_performance with minimal data"""
+        from app.core.logging import log_performance
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_performance("simple_operation", 50.0)
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "simple_operation" in str(call_args)
+        assert "50.0" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_api_call_minimal_data(self, mock_get_logger):
+        """Test log_api_call with minimal data"""
+        from app.core.logging import log_api_call
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_api_call("GET", "/api/health", 200, 25.0)
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "GET" in str(call_args)
+        assert "/api/health" in str(call_args)
+        assert "200" in str(call_args)
+        assert "25.0" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_security_event_minimal_data(self, mock_get_logger):
+        """Test log_security_event with minimal data"""
+        from app.core.logging import log_security_event
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_security_event("access_denied", "user123")
+        
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert "access_denied" in str(call_args)
+        assert "user123" in str(call_args)
+    
+    @patch('app.core.logging.get_logger')
+    def test_log_business_event_minimal_data(self, mock_get_logger):
+        """Test log_business_event with minimal data"""
+        from app.core.logging import log_business_event
+        
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+        
+        log_business_event("user_registration", "user123")
+        
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert "user_registration" in str(call_args)
+        assert "user123" in str(call_args)
