@@ -249,25 +249,15 @@ def sanitize_input(func: Callable) -> Callable:
                 request = kwargs.get('request')
             
             if request:
-                # Sanitize query parameters
-                if hasattr(request, 'query_params'):
-                    sanitized_query = {}
-                    for key, value in request.query_params.items():
-                        if isinstance(value, str):
-                            sanitized_query[key] = sanitize_string(value)
-                        else:
-                            sanitized_query[key] = value
-                    request.query_params = sanitized_query
-                
-                # Sanitize path parameters
-                if hasattr(request, 'path_params'):
-                    sanitized_path = {}
-                    for key, value in request.path_params.items():
-                        if isinstance(value, str):
-                            sanitized_path[key] = sanitize_string(value)
-                        else:
-                            sanitized_path[key] = value
-                    request.path_params = sanitized_path
+                # Note: query_params and path_params are read-only in FastAPI
+                # This decorator logs sanitization but doesn't modify the request
+                # The actual sanitization should be done in the endpoint logic
+                logger.debug(
+                    "Input sanitization check",
+                    endpoint=func.__name__,
+                    query_params=dict(request.query_params) if hasattr(request, 'query_params') else None,
+                    path_params=dict(request.path_params) if hasattr(request, 'path_params') else None
+                )
             
             return await func(*args, **kwargs)
             

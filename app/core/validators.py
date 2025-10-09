@@ -26,13 +26,14 @@ class BaseValidationModel(BaseModel):
 def validate_email(email: str) -> str:
     """Validate email format."""
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    if not re.match(email_pattern, email):
+    trimmed_email = email.strip()
+    if not re.match(email_pattern, trimmed_email):
         raise CustomValidationError(
             field_name="email",
             value=email,
             message="Invalid email format"
         )
-    return email.lower().strip()
+    return trimmed_email.lower()
 
 
 def validate_phone(phone: str) -> str:
@@ -431,20 +432,20 @@ def validate_file_upload(
 
 def validate_search_query(query: str, min_length: int = 2, max_length: int = 100) -> str:
     """Validate search query parameters."""
-    if not query or not isinstance(query, str):
+    if not isinstance(query, str):
         raise CustomValidationError(
             field_name="query",
             value=query,
-            message="Search query must be a non-empty string"
+            message="Search query must be a string"
         )
     
     query = query.strip()
     
-    if len(query) < min_length:
+    if not query or len(query) < min_length:
         raise CustomValidationError(
             field_name="query",
             value=query,
-            message=f"Search query must be at least {min_length} characters"
+            message=f"Search query must be a non-empty string with at least {min_length} characters"
         )
     
     if len(query) > max_length:
@@ -459,7 +460,127 @@ def validate_search_query(query: str, min_length: int = 2, max_length: int = 100
     if any(pattern in query.lower() for pattern in sql_patterns):
         logger.warning("Potential SQL injection attempt detected", query=query)
     
+    # Check for XSS patterns
+    xss_patterns = ['<script', 'javascript:', 'onload=', 'onerror=']
+    if any(pattern in query.lower() for pattern in xss_patterns):
+        logger.warning("Potential XSS attempt detected", query=query)
+    
+    # Check for excessive special characters (potential spam)
+    special_char_count = sum(1 for c in query if not c.isalnum() and not c.isspace())
+    if special_char_count > len(query) * 0.5:  # More than 50% special characters
+        logger.warning("Query contains excessive special characters", query=query)
+    
     return query
+
+
+def validate_search_category(category: str) -> str:
+    """Validate search category."""
+    if not category or not isinstance(category, str):
+        raise CustomValidationError(
+            field_name="category",
+            value=category,
+            message="Search category must be a non-empty string"
+        )
+    
+    category = category.strip().lower()
+    
+    # Allowed categories
+    allowed_categories = [
+        'places', 'events', 'movies', 'music', 'books', 'restaurants',
+        'hotels', 'activities', 'shopping', 'travel', 'general'
+    ]
+    
+    if category not in allowed_categories:
+        raise CustomValidationError(
+            field_name="category",
+            value=category,
+            message=f"Search category must be one of: {', '.join(allowed_categories)}"
+        )
+    
+    return category
+
+
+def validate_search_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate search filters."""
+    if not isinstance(filters, dict):
+        raise CustomValidationError(
+            field_name="filters",
+            value=filters,
+            message="Search filters must be a dictionary"
+        )
+    
+    # Maximum number of filters
+    if len(filters) > 10:
+        raise CustomValidationError(
+            field_name="filters",
+            value=filters,
+            message="Too many search filters (maximum 10 allowed)"
+        )
+    
+    # Validate filter keys and values
+    validated_filters = {}
+    for key, value in filters.items():
+        if not isinstance(key, str) or len(key) > 50:
+            raise CustomValidationError(
+                field_name="filter_key",
+                value=key,
+                message="Filter key must be a string with maximum 50 characters"
+            )
+        
+        # Sanitize filter key
+        key = sanitize_string(key, max_length=50)
+        
+        # Validate filter value
+        if isinstance(value, str):
+            value = sanitize_string(value, max_length=200)
+        elif isinstance(value, (int, float)):
+            # Numeric values are fine
+            pass
+        elif isinstance(value, list):
+            # List values - validate each item
+            if len(value) > 20:  # Maximum 20 items in a list filter
+                raise CustomValidationError(
+                    field_name="filter_value",
+                    value=value,
+                    message="Filter list cannot have more than 20 items"
+                )
+            value = [sanitize_string(str(item), max_length=100) if isinstance(item, str) else item for item in value]
+        else:
+            # Convert other types to string
+            value = str(value)[:200]  # Limit length
+        
+        validated_filters[key] = value
+    
+    return validated_filters
+
+
+def validate_model_name(model_name: str) -> str:
+    """Validate model name."""
+    if not model_name or not isinstance(model_name, str):
+        raise CustomValidationError(
+            field_name="model_name",
+            value=model_name,
+            message="Model name must be a non-empty string"
+        )
+    
+    model_name = model_name.strip()
+    
+    if len(model_name) < 1 or len(model_name) > 100:
+        raise CustomValidationError(
+            field_name="model_name",
+            value=model_name,
+            message="Model name must be between 1 and 100 characters"
+        )
+    
+    # Check for valid characters (alphanumeric, hyphens, underscores, dots)
+    if not re.match(r'^[a-zA-Z0-9._-]+$', model_name):
+        raise CustomValidationError(
+            field_name="model_name",
+            value=model_name,
+            message="Model name can only contain letters, numbers, dots, hyphens, and underscores"
+        )
+    
+    return model_name
 
 
 def validate_recommendation_params(

@@ -169,14 +169,44 @@ def log_function_call(func_name: str, **kwargs):
     return decorator
 
 
-def log_api_call(service_name: str, endpoint: str, method: str = "GET", **kwargs):
-    """Log external API calls"""
+def log_api_call(*args, **kwargs):
+    """Log API calls. Supports two signatures for backward compatibility:
+    1) log_api_call(service_name, endpoint, method="GET", **kwargs) -> initiates call
+    2) log_api_call(method, path, status_code, duration_ms, **kwargs) -> completion
+    """
     logger = get_logger("api_calls")
-    logger.info("External API call initiated",
-               service=service_name,
-               endpoint=endpoint,
-               method=method,
-               **kwargs)
+    # Completion-style call: (method, path, status_code, duration_ms)
+    if len(args) >= 4 and isinstance(args[2], int):
+        method, path, status_code, duration_ms = args[:4]
+        fields = {
+            "method": method,
+            "endpoint": path,
+            "status_code": status_code,
+            "response_time_ms": duration_ms,
+        }
+        fields.update(kwargs)
+        if status_code is not None and int(status_code) < 400:
+            logger.info("API call completed", **fields)
+        else:
+            logger.error("API call failed", **fields)
+        return
+    
+    # Initiation-style call: (service_name, endpoint, method="GET", **kwargs)
+    if len(args) >= 2:
+        service_name = args[0]
+        endpoint = args[1]
+        method = args[2] if len(args) >= 3 else kwargs.pop("method", "GET")
+        logger.info(
+            "External API call initiated",
+            service=service_name,
+            endpoint=endpoint,
+            method=method,
+            **kwargs,
+        )
+        return
+    
+    # Fallback: insufficient args
+    logger.info("API call", **kwargs)
 
 
 def log_api_response(service_name: str, endpoint: str, success: bool, 
@@ -248,6 +278,51 @@ def log_exception(logger_name: str, exception: Exception, context: Dict[str, Any
                 exception_message=str(exception),
                 context=context or {},
                 exc_info=True)
+
+
+def log_performance(operation: str, duration_ms: float, success: bool = True, additional_data: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+    """Log performance metrics for an operation.
+    When success is True -> info; otherwise -> warning.
+    """
+    logger = get_logger("performance")
+    fields: Dict[str, Any] = {
+        "operation": operation,
+        "duration_ms": duration_ms,
+        "success": success,
+    }
+    if additional_data:
+        fields.update(additional_data)
+    fields.update(kwargs)
+    if success:
+        logger.info("Operation performance", **fields)
+    else:
+        logger.warning("Operation performance", **fields)
+
+
+def log_security_event(event_type: str, user_id: Optional[str] = None, details: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+    """Log security-related events."""
+    logger = get_logger("security")
+    fields: Dict[str, Any] = {
+        "event": event_type,
+        "user_id": user_id,
+    }
+    if details:
+        fields.update(details)
+    fields.update(kwargs)
+    logger.warning("Security event", **fields)
+
+
+def log_business_event(event_type: str, user_id: Optional[str] = None, details: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+    """Log business/domain events."""
+    logger = get_logger("business")
+    fields: Dict[str, Any] = {
+        "event": event_type,
+        "user_id": user_id,
+    }
+    if details:
+        fields.update(details)
+    fields.update(kwargs)
+    logger.info("Business event", **fields)
 
 
 # Initialize logging on module import

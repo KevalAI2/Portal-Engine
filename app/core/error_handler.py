@@ -5,7 +5,9 @@ This module provides utilities for consistent error handling,
 logging, and error response formatting across the application.
 """
 import traceback
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Callable, TypeVar, Coroutine
+import functools
+import inspect
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from app.core.exceptions import PortalEngineException
@@ -16,7 +18,7 @@ from app.models.responses import APIResponse
 logger = get_logger("error_handler")
 
 
-def handle_exception(
+async def handle_exception(
     request: Request,
     exc: Exception,
     include_traceback: bool = False
@@ -32,7 +34,11 @@ def handle_exception(
     Returns:
         JSONResponse: Formatted error response
     """
-    correlation_id = getattr(request.state, 'correlation_id', None)
+    # Prefer header if provided, else state
+    correlation_id = request.headers.get("X-Correlation-ID") or getattr(request.state, 'correlation_id', None)
+    # Ensure JSON-serializable
+    if correlation_id is not None and not isinstance(correlation_id, (str, int)):
+        correlation_id = str(correlation_id)
     
     # Log the exception
     logger.error(
@@ -52,6 +58,14 @@ def handle_exception(
     # Handle FastAPI HTTP exceptions
     if isinstance(exc, HTTPException):
         return _handle_http_exception(exc, correlation_id)
+    
+    # Handle Pydantic ValidationError (import locally to avoid hard dep at import time)
+    try:
+        from pydantic import ValidationError  # type: ignore
+        if isinstance(exc, ValidationError):
+            return _handle_validation_exception(exc, correlation_id, include_traceback)
+    except Exception:
+        pass
     
     # Handle generic exceptions
     return _handle_generic_exception(exc, correlation_id, include_traceback)
@@ -93,7 +107,7 @@ def _handle_http_exception(
 ) -> JSONResponse:
     """Handle FastAPI HTTP exceptions."""
     error_details = {
-        "correlation_id": correlation_id
+        "correlation_id": str(correlation_id) if correlation_id is not None else None
     }
     
     response = APIResponse.error_response(
@@ -116,14 +130,14 @@ def _handle_generic_exception(
     """Handle generic exceptions."""
     error_details = {
         "exception_type": type(exc).__name__,
-        "correlation_id": correlation_id
+        "correlation_id": str(correlation_id) if correlation_id is not None else None
     }
     
     if include_traceback:
         error_details["traceback"] = traceback.format_exc()
     
     response = APIResponse.error_response(
-        message="An unexpected error occurred",
+        message=str(exc) or "An unexpected error occurred",
         status_code=500,
         error=error_details
     )
@@ -132,6 +146,27 @@ def _handle_generic_exception(
         status_code=500,
         content=response.model_dump()
     )
+
+
+def _handle_validation_exception(
+    exc: Any,
+    correlation_id: Optional[str],
+    include_traceback: bool
+) -> JSONResponse:
+    """Handle Pydantic ValidationError consistently."""
+    error_details = {
+        "exception_type": "ValidationError",
+        "correlation_id": str(correlation_id) if correlation_id is not None else None,
+        "errors": getattr(exc, 'errors', lambda: [])(),
+    }
+    if include_traceback:
+        error_details["traceback"] = traceback.format_exc()
+    response = APIResponse.error_response(
+        message=str(exc),
+        status_code=422,
+        error=error_details
+    )
+    return JSONResponse(status_code=422, content=response.model_dump())
 
 
 def _get_status_code_for_error_code(error_code: str) -> int:
@@ -187,11 +222,14 @@ def log_service_error(
 
 
 def create_error_response(
+    *,
+    status_code: int,
     message: str,
-    error_code: str,
-    status_code: int = 500,
-    details: Optional[Dict[str, Any]] = None,
-    correlation_id: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None,
+    correlation_id: Optional[str] = None,
+    include_traceback: bool = False,
+    exc: Optional[Exception] = None,
+    error_code: Optional[str] = None,
 ) -> JSONResponse:
     """
     Create a standardized error response.
@@ -206,24 +244,23 @@ def create_error_response(
     Returns:
         JSONResponse: Formatted error response
     """
-    error_details = {
-        "error_code": error_code,
-        "correlation_id": correlation_id
-    }
-    
-    if details:
-        error_details["details"] = details
+    details_out: Dict[str, Any] = {}
+    if error_code:
+        details_out["error_code"] = error_code
+    if correlation_id is not None:
+        details_out["correlation_id"] = str(correlation_id)
+    if error_details:
+        details_out.update(error_details)
+    if include_traceback and exc is not None:
+        details_out["traceback"] = traceback.format_exc()
     
     response = APIResponse.error_response(
         message=message,
         status_code=status_code,
-        error=error_details
+        error=details_out
     )
     
-    return JSONResponse(
-        status_code=status_code,
-        content=response.model_dump()
-    )
+    return JSONResponse(status_code=status_code, content=response.model_dump())
 
 
 def validate_required_fields(
@@ -258,37 +295,48 @@ def validate_required_fields(
         )
 
 
-def safe_execute(
-    func,
-    *args,
-    default_return: Any = None,
-    error_message: str = "Operation failed",
-    log_errors: bool = True,
-    **kwargs
-) -> Any:
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def safe_execute(func: Optional[F] = None, *, default_return: Any = None, error_message: str = "Operation failed", log_errors: bool = True) -> Callable[[F], F] | F:
+    """Decorator to execute a function safely with error handling.
+    Can be used as `@safe_execute` or `@safe_execute(default_return=..., ...)`.
+    Supports both sync and async functions.
     """
-    Safely execute a function with error handling.
-    
-    Args:
-        func: Function to execute
-        *args: Positional arguments for the function
-        default_return: Value to return if function fails
-        error_message: Error message to log
-        log_errors: Whether to log errors
-        **kwargs: Keyword arguments for the function
-        
-    Returns:
-        Function result or default_return if function fails
-    """
-    try:
-        return func(*args, **kwargs)
-    except Exception as e:
-        if log_errors:
-            logger.error(
-                error_message,
-                function_name=func.__name__,
-                error_type=type(e).__name__,
-                error_message=str(e),
-                exc_info=True
-            )
-        return default_return
+    def _decorator(fn: F) -> F:
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any):
+                try:
+                    return await fn(*args, **kwargs)
+                except Exception as e:  # pragma: no cover - exercised in tests
+                    if log_errors:
+                        logger.error(
+                            error_message,
+                            function_name=fn.__name__,
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                            exc_info=True,
+                        )
+                    return default_return
+            return async_wrapper  # type: ignore[return-value]
+        else:
+            @functools.wraps(fn)
+            def sync_wrapper(*args: Any, **kwargs: Any):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    if log_errors:
+                        logger.error(
+                            error_message,
+                            function_name=fn.__name__,
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                            exc_info=True,
+                        )
+                    return default_return
+            return sync_wrapper  # type: ignore[return-value]
+
+    if func is not None and callable(func):
+        return _decorator(func)  # type: ignore[return-value]
+    return _decorator

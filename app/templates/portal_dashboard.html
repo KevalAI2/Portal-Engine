@@ -211,9 +211,29 @@
                                 <div class="operation-card">
                                     <h5>Search Queries</h5>
                                     <p class="card-description">View the actual search queries being passed through the system</p>
-                                    <div class="form-group mb-3">
+                                    <div class="form-group mb-2">
                                         <label for="search-user-id" class="form-label">Filter by User ID (optional)</label>
                                         <input type="text" id="search-user-id" class="form-control" placeholder="Enter user ID (e.g., 1)" value="1">
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="search-category" class="form-label">Category</label>
+                                        <select id="search-category" class="form-control">
+                                            <option value="">All Categories</option>
+                                            <option value="places">Places</option>
+                                            <option value="events">Events</option>
+                                            <option value="movies">Movies</option>
+                                            <option value="music">Music</option>
+                                            <option value="restaurants">Restaurants</option>
+                                            <option value="general">General</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="search-limit" class="form-label">Limit</label>
+                                        <input type="number" id="search-limit" class="form-control" value="10" min="1" max="100">
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" id="search-success-only" class="form-check-input">
+                                        <label for="search-success-only" class="form-check-label">Success Only</label>
                                     </div>
                                     <button class="btn btn-primary" onclick="getSearchQueries()">Get Search Queries</button>
                                     <div class="response-area">
@@ -246,6 +266,101 @@
                                         <label>Prefetch Statistics</label>
                                         <div id="prefetch-stats" class="json-display">
                                             <p class="text-muted">Click "Get Prefetch Stats" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Analytics Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-chart-bar"></i>
+                            <h3>Search Analytics</h3>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="operation-card">
+                                    <h5>Search Analytics</h5>
+                                    <p class="card-description">View search query analytics and statistics</p>
+                                    <div class="form-group mb-2">
+                                        <label for="analytics-user-id" class="form-label">User ID (optional)</label>
+                                        <input type="text" id="analytics-user-id" class="form-control" placeholder="Enter user ID to filter">
+                                    </div>
+                                    <div class="form-group mb-3">
+                                        <label for="analytics-days" class="form-label">Days to Analyze</label>
+                                        <input type="number" id="analytics-days" class="form-control" value="7" min="1" max="365">
+                                    </div>
+                                    <button class="btn btn-success" onclick="getSearchAnalytics()">Get Analytics</button>
+                                    <div class="response-area">
+                                        <label>Search Analytics</label>
+                                        <div id="search-analytics" class="json-display">
+                                            <p class="text-muted">Click "Get Analytics" to load data</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="operation-card">
+                                    <h5>Capture Search Query</h5>
+                                    <p class="card-description">Manually capture a search query for testing</p>
+                                    <div class="form-group mb-2">
+                                        <label for="capture-user-id" class="form-label">User ID *</label>
+                                        <input type="text" id="capture-user-id" class="form-control" placeholder="Enter user ID" required>
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="capture-prompt" class="form-label">Search Prompt *</label>
+                                        <textarea id="capture-prompt" class="form-control" rows="2" placeholder="Enter search query/prompt" required></textarea>
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="capture-model" class="form-label">Model Name</label>
+                                        <input type="text" id="capture-model" class="form-control" value="test-model" placeholder="Enter model name">
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="capture-category" class="form-label">Category</label>
+                                        <select id="capture-category" class="form-control">
+                                            <option value="">Select Category</option>
+                                            <option value="places">Places</option>
+                                            <option value="events">Events</option>
+                                            <option value="movies">Movies</option>
+                                            <option value="music">Music</option>
+                                            <option value="restaurants">Restaurants</option>
+                                            <option value="general">General</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-warning" onclick="captureSearchQuery()">Capture Query</button>
+                                    <div class="response-area">
+                                        <label>Capture Result</label>
+                                        <div id="search-capture-result" class="json-display">
+                                            <p class="text-muted">Click "Capture Query" to test</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Query Management Section -->
+                    <div class="section">
+                        <div class="section-header">
+                            <i class="fas fa-tools"></i>
+                            <h3>Search Query Management</h3>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="operation-card">
+                                    <h5>Cleanup Old Queries</h5>
+                                    <p class="card-description">Remove old search queries from the system</p>
+                                    <div class="form-group mb-3">
+                                        <label for="cleanup-days" class="form-label">Keep queries newer than (days)</label>
+                                        <input type="number" id="cleanup-days" class="form-control" value="30" min="1" max="365">
+                                    </div>
+                                    <button class="btn btn-danger" onclick="cleanupOldQueries()">Cleanup Old Queries</button>
+                                    <div class="response-area">
+                                        <label>Cleanup Result</label>
+                                        <div id="search-cleanup-result" class="json-display">
+                                            <p class="text-muted">Click "Cleanup Old Queries" to proceed</p>
                                         </div>
                                     </div>
                                 </div>

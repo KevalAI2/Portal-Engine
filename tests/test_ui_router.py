@@ -263,22 +263,36 @@ def _install_fake_psutil(monkeypatch):
 
 def test_debug_search_queries(monkeypatch):
     dataset = {
-        "recommendations:1": json.dumps({"prompt": "beach trips", "user_id": "u1"}),
-        "recommendations:2": json.dumps({"prompt": "mountain hikes", "user_id": "u2"}),
+        "search_query:test1": json.dumps({
+            "query_id": "test1",
+            "user_id": "u1", 
+            "prompt": "beach trips",
+            "timestamp": 1234567890.0,
+            "model_name": "test-model",
+            "success": True
+        }),
+        "search_query:test2": json.dumps({
+            "query_id": "test2",
+            "user_id": "u2", 
+            "prompt": "mountain hikes",
+            "timestamp": 1234567891.0,
+            "model_name": "test-model",
+            "success": True
+        }),
     }
     _install_fake_redis(monkeypatch, dataset)
 
     client = TestClient(app)
     r = client.get("/ui/debug/search-queries")
     assert r.status_code == 200 and r.json()["success"] is True
-    assert r.json()["data"]["total_queries"] == 2
+    assert r.json()["data"]["total_count"] == 2
 
     r = client.get("/ui/debug/search-queries", params={"user_id": "u1"})
-    assert r.status_code == 200 and r.json()["data"]["total_queries"] >= 1
+    assert r.status_code == 200 and r.json()["data"]["total_count"] >= 1
 
 
 def test_debug_search_queries_error(monkeypatch):
-    import app.api.routers.ui as ui_mod
+    import app.services.search_integration as search_mod
 
     class BadRedis:
         def __init__(self, *a, **k):
@@ -286,10 +300,9 @@ def test_debug_search_queries_error(monkeypatch):
         def scan_iter(self, match=None):
             raise Exception("redis scan error")
 
-    class Module:
-        Redis = lambda self, **kwargs: BadRedis()
-
-    monkeypatch.setitem(ui_mod.sys.modules, "redis", Module())
+    # Mock the search_service instance directly
+    monkeypatch.setattr(search_mod, "search_service", search_mod.SearchIntegrationService(BadRedis()))
+    
     client = TestClient(app)
     r = client.get("/ui/debug/search-queries")
     assert r.status_code == 200 and r.json()["success"] is False

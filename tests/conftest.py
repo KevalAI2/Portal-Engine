@@ -13,6 +13,7 @@ from app.api.dependencies import (
     get_user_profile_service,
     get_lie_service,
     get_cis_service,
+    get_llm_service,
 )
 
 # Add the app directory to the Python path
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
 from app.main import app
 from app.core.config import settings
+from app.api.routers import users as users_router_module
 from app.models.schemas import UserProfile, LocationData, InteractionData
 
 
@@ -32,11 +34,15 @@ def event_loop():
 
 
 @pytest.fixture
-def client(mock_user_profile_service, mock_lie_service, mock_cis_service):
+def client(mock_user_profile_service, mock_lie_service, mock_cis_service, mock_llm_service):
     # ✅ Correct: override with function references, not strings
     app.dependency_overrides[get_user_profile_service] = lambda: mock_user_profile_service
     app.dependency_overrides[get_lie_service] = lambda: mock_lie_service
     app.dependency_overrides[get_cis_service] = lambda: mock_cis_service
+    # Ensure LLM service DI returns the same mock used by assertions in tests
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm_service
+    # Some routers bind the dependency reference at import time; override that reference too
+    app.dependency_overrides[users_router_module.get_llm_service] = lambda: mock_llm_service
 
     with TestClient(app) as c:
         yield c
@@ -295,11 +301,17 @@ def mock_cis_service(mock_external_services):
 
 @pytest.fixture
 def mock_llm_service():
-    """Mock LLMService."""
-    service = Mock()
-    service.generate_recommendations = Mock()
-    service.get_recommendations_from_redis = Mock()
-    service.clear_recommendations = Mock()
+    """Mock LLMService used by DI and assertions.
+    Returns the patched LLMService() instance so DI and tests share the same object.
+    """
+    from app.services.llm_service import LLMService  # patched by mock_external_services
+    service = LLMService()  # this returns mock_llm.return_value
+    # Ensure awaited call works and is tracked
+    service.generate_recommendations = AsyncMock()
+    if not hasattr(service, 'get_recommendations_from_redis'):
+        service.get_recommendations_from_redis = Mock()
+    if not hasattr(service, 'clear_recommendations'):
+        service.clear_recommendations = Mock()
     return service
 
 
@@ -398,7 +410,8 @@ def mock_external_services():
         mock_cis.return_value.get_interaction_data = AsyncMock()
         mock_cis.return_value.health_check = AsyncMock(return_value=True)
         
-        mock_llm.return_value.generate_recommendations = Mock()
+        # Ensure awaited calls in endpoints work with AsyncMock
+        mock_llm.return_value.generate_recommendations = AsyncMock()
         mock_llm.return_value.get_recommendations_from_redis = Mock()
         mock_llm.return_value.clear_recommendations = Mock()
         

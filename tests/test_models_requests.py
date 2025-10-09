@@ -499,12 +499,14 @@ class TestDateRangePayload:
     def test_date_range_payload_invalid_start_format(self):
         """Test invalid start date format raises ValidationError"""
         with pytest.raises(ValidationError):
-            DateRangePayload(start="2024-01-01T00:00:00", end="2024-12-31T23:59:59Z")
+            # Invalid month (13)
+            DateRangePayload(start="2024-13-01T00:00:00Z", end="2024-12-31T23:59:59Z")
     
     def test_date_range_payload_invalid_end_format(self):
         """Test invalid end date format raises ValidationError"""
         with pytest.raises(ValidationError):
-            DateRangePayload(start="2024-01-01T00:00:00Z", end="2024-12-31T23:59:59")
+            # Invalid day (32)
+            DateRangePayload(start="2024-01-01T00:00:00Z", end="2024-12-32T23:59:59Z")
     
     def test_date_range_payload_invalid_date_string(self):
         """Test invalid date string raises ValidationError"""

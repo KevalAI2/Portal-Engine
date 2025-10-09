@@ -179,55 +179,32 @@ async def proxy_request(
 
 
 @router.get("/debug/search-queries")
-async def get_search_queries(user_id: Optional[str] = None):
+async def get_search_queries(
+    user_id: Optional[str] = None,
+    limit: int = 10,
+    offset: int = 0,
+    category: Optional[str] = None,
+    success_only: bool = False
+):
     """
     Get actual search queries (prompts) from the system
-    Optionally filter by user_id if provided
+    Optionally filter by user_id, category, and success status
     """
     try:
-        from app.core.config import settings
-        import redis
+        from app.services.search_integration import search_service
         
-        redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=6379,
-            db=1,
-            decode_responses=True
+        # Get search queries using the search integration service
+        result = search_service.get_search_queries(
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            category=category,
+            success_only=success_only
         )
-        
-        # Get model name from settings
-        model_name = settings.recommendation_api_provider
-        
-        # Get actual prompts from Redis recommendations
-        search_queries = []
-        query_count = 0
-        
-        # Look for recommendation keys that contain prompts
-        for key in redis_client.scan_iter(match="recommendations:*"):
-            try:
-                recommendation_data = redis_client.get(key)
-                if recommendation_data:
-                    data = json.loads(recommendation_data)
-                    if isinstance(data, dict) and "prompt" in data:
-                        # Filter by user_id if provided
-                        if user_id is None or data.get("user_id") == user_id:
-                            query_count += 1
-                            search_queries.append({
-                                "query_id": f"prompt_{query_count}",
-                                "prompt": data.get("prompt", ""),
-                                "model_name": model_name
-                            })
-            except Exception as e:
-                logger.warning(f"Error parsing recommendation data for key {key}: {str(e)}")
-                continue
         
         return JSONResponse({
             "success": True,
-            "data": {
-                "queries": search_queries[:10],  # Limit to 10 most recent
-                "total_queries": len(search_queries),
-                "filtered_by_user_id": user_id
-            }
+            "data": result
         })
         
     except Exception as e:
@@ -235,6 +212,148 @@ async def get_search_queries(user_id: Optional[str] = None):
         return JSONResponse({
             "success": False,
             "error": f"Failed to get search queries: {str(e)}"
+        })
+
+
+@router.get("/debug/search-analytics")
+async def get_search_analytics(
+    user_id: Optional[str] = None,
+    days: int = 7
+):
+    """
+    Get search analytics and statistics
+    """
+    try:
+        from app.services.search_integration import search_service
+        
+        # Get search analytics
+        analytics = search_service.get_search_analytics(
+            user_id=user_id,
+            days=days
+        )
+        
+        return JSONResponse({
+            "success": True,
+            "data": analytics
+        })
+        
+    except Exception as e:
+        logger.error("Error getting search analytics", error=str(e))
+        return JSONResponse({
+            "success": False,
+            "error": f"Failed to get search analytics: {str(e)}"
+        })
+
+
+@router.post("/debug/search-queries/capture")
+async def capture_search_query(request: dict):
+    """
+    Manually capture a search query for testing
+    """
+    try:
+        from app.services.search_integration import search_service
+        
+        # Extract parameters
+        user_id = request.get("user_id")
+        prompt = request.get("prompt")
+        model_name = request.get("model_name", "test-model")
+        category = request.get("category")
+        filters = request.get("filters")
+        
+        if not user_id or not prompt:
+            return JSONResponse({
+                "success": False,
+                "error": "user_id and prompt are required"
+            })
+        
+        # Capture the search query
+        query_id = search_service.capture_search_query(
+            user_id=user_id,
+            prompt=prompt,
+            model_name=model_name,
+            category=category,
+            filters=filters
+        )
+        
+        return JSONResponse({
+            "success": True,
+            "data": {
+                "query_id": query_id,
+                "message": "Search query captured successfully"
+            }
+        })
+        
+    except Exception as e:
+        logger.error("Error capturing search query", error=str(e))
+        return JSONResponse({
+            "success": False,
+            "error": f"Failed to capture search query: {str(e)}"
+        })
+
+
+@router.post("/debug/search-queries/{query_id}/mark-failed")
+async def mark_query_failed(query_id: str, request: dict):
+    """
+    Mark a search query as failed
+    """
+    try:
+        from app.services.search_integration import search_service
+        
+        error_message = request.get("error_message", "Unknown error")
+        
+        success = search_service.mark_query_failed(
+            query_id=query_id,
+            error_message=error_message
+        )
+        
+        if success:
+            return JSONResponse({
+                "success": True,
+                "data": {
+                    "query_id": query_id,
+                    "message": "Query marked as failed"
+                }
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": "Query not found or could not be updated"
+            })
+        
+    except Exception as e:
+        logger.error("Error marking query as failed", error=str(e))
+        return JSONResponse({
+            "success": False,
+            "error": f"Failed to mark query as failed: {str(e)}"
+        })
+
+
+@router.post("/debug/search-queries/cleanup")
+async def cleanup_old_queries(request: dict):
+    """
+    Clean up old search queries
+    """
+    try:
+        from app.services.search_integration import search_service
+        
+        days = request.get("days", 30)
+        
+        cleaned_count = search_service.cleanup_old_queries(days=days)
+        
+        return JSONResponse({
+            "success": True,
+            "data": {
+                "cleaned_count": cleaned_count,
+                "days": days,
+                "message": f"Cleaned up {cleaned_count} old queries"
+            }
+        })
+        
+    except Exception as e:
+        logger.error("Error cleaning up old queries", error=str(e))
+        return JSONResponse({
+            "success": False,
+            "error": f"Failed to cleanup old queries: {str(e)}"
         })
 
 

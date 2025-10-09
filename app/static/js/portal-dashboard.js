@@ -236,11 +236,20 @@ async function getRankedResults() {
 async function getSearchQueries() {
     const dataDiv = document.getElementById('search-queries');
     const userId = document.getElementById('search-user-id').value;
+    const category = document.getElementById('search-category').value;
+    const successOnly = document.getElementById('search-success-only').checked;
+    const limit = document.getElementById('search-limit').value || 10;
     
     try {
-        let url = '/ui/debug/search-queries';
+        let url = `/ui/debug/search-queries?limit=${limit}`;
         if (userId && userId.trim() !== '') {
-            url += `?user_id=${encodeURIComponent(userId.trim())}`;
+            url += `&user_id=${encodeURIComponent(userId.trim())}`;
+        }
+        if (category && category.trim() !== '') {
+            url += `&category=${encodeURIComponent(category.trim())}`;
+        }
+        if (successOnly) {
+            url += `&success_only=true`;
         }
         
         const response = await fetch(url);
@@ -248,6 +257,78 @@ async function getSearchQueries() {
         displayJSON(dataDiv, result);
     } catch (error) {
         displayError(dataDiv, 'Failed to get search queries: ' + error.message);
+    }
+}
+
+async function getSearchAnalytics() {
+    const dataDiv = document.getElementById('search-analytics');
+    const userId = document.getElementById('analytics-user-id').value;
+    const days = document.getElementById('analytics-days').value || 7;
+    
+    try {
+        let url = `/ui/debug/search-analytics?days=${days}`;
+        if (userId && userId.trim() !== '') {
+            url += `&user_id=${encodeURIComponent(userId.trim())}`;
+        }
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        displayJSON(dataDiv, result);
+    } catch (error) {
+        displayError(dataDiv, 'Failed to get search analytics: ' + error.message);
+    }
+}
+
+async function captureSearchQuery() {
+    const dataDiv = document.getElementById('search-capture-result');
+    const userId = document.getElementById('capture-user-id').value;
+    const prompt = document.getElementById('capture-prompt').value;
+    const modelName = document.getElementById('capture-model').value || 'test-model';
+    const category = document.getElementById('capture-category').value;
+    const filters = document.getElementById('capture-filters').value;
+    
+    if (!userId || !prompt) {
+        displayError(dataDiv, 'User ID and prompt are required');
+        return;
+    }
+    
+    try {
+        const requestData = {
+            user_id: userId,
+            prompt: prompt,
+            model_name: modelName,
+            category: category || null,
+            filters: filters ? JSON.parse(filters) : null
+        };
+        
+        const response = await fetch('/ui/debug/search-queries/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        });
+        
+        const result = await response.json();
+        displayJSON(dataDiv, result);
+    } catch (error) {
+        displayError(dataDiv, 'Failed to capture search query: ' + error.message);
+    }
+}
+
+async function cleanupOldQueries() {
+    const dataDiv = document.getElementById('search-cleanup-result');
+    const days = document.getElementById('cleanup-days').value || 30;
+    
+    try {
+        const response = await fetch('/ui/debug/search-queries/cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: parseInt(days) })
+        });
+        
+        const result = await response.json();
+        displayJSON(dataDiv, result);
+    } catch (error) {
+        displayError(dataDiv, 'Failed to cleanup old queries: ' + error.message);
     }
 }
 
